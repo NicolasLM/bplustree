@@ -15,7 +15,7 @@ class BPlusTree:
     def __init__(self, filename: Optional[str]=None,
                  length: Optional[int]=None, order: int=4):
         if not length:
-            length = 10 * mmap.PAGESIZE
+            length = 5000 * mmap.PAGESIZE
         if not filename:
             self._fd = None
             self._mm = mmap.mmap(-1, length, access=mmap.ACCESS_WRITE)
@@ -105,28 +105,34 @@ class BPlusTree:
             self._write_node(node)
         else:
             node.insert_entry(Record(key, value))
-            new_node = self._split_leaf(node)
+            self._split_leaf(node)
 
     def _search_in_tree(self, key, node) -> 'Node':
         if isinstance(node, (LonelyRootNode, LeafNode)):
             return node
 
+        page = None
+
         if key < node.smallest_key:
             page = node.smallest_entry.before
-            return self._search_in_tree(key, self._get_node_at_page(page))
 
-        if node.biggest_key <= key:
+        elif node.biggest_key <= key:
             page = node.biggest_entry.after
-            return self._search_in_tree(key, self._get_node_at_page(page))
 
-        for ref_a, ref_b in pairwise(node._entries):
-            if ref_a.key <= key < ref_b.key:
-                page = ref_a.after
-                return self._search_in_tree(key, self._get_node_at_page(page))
+        else:
+            for ref_a, ref_b in pairwise(node._entries):
+                if ref_a.key <= key < ref_b.key:
+                    page = ref_a.after
+                    break
 
-        assert False, 'Unreachable'
+        assert page is not None
+
+        child_node = self._get_node_at_page(page)
+        child_node.parent = node
+        return self._search_in_tree(key, child_node)
 
     def _split_leaf(self, old_node: 'Node') -> 'LeafNode':
+        parent = old_node.parent
         new_node = self.LeafNode(page=self._allocate_new_page())
         new_entries = old_node.split_entries()
         new_node._entries = new_entries
@@ -134,23 +140,57 @@ class BPlusTree:
         if isinstance(old_node, LonelyRootNode):
             # Convert the LonelyRoot into a Leaf
             old_node = old_node.convert_to_leaf()
-            self._create_new_root(new_node.smallest_key,
-                                  old_node.page, new_node.page)
+            ref = Reference(new_node.smallest_key, old_node.page,
+                            new_node.page)
+            self._create_new_root(ref)
         else:
-            parent = self._root_node
-            parent.insert_entry(Reference(new_node.smallest_key,
-                                          old_node.page,
-                                          new_node.page
-                                          ))
-            self._write_node(parent)
+            ref = Reference(
+                new_node.smallest_key, old_node.page, new_node.page
+            )
+            if parent.can_add_entry:
+                parent.insert_entry(ref)
+                self._write_node(parent)
+            else:
+                parent.insert_entry(ref)
+                self._split_parent(parent)
 
         self._write_node(old_node)
         self._write_node(new_node)
         return new_node
 
-    def _create_new_root(self, key, before: int, after: int):
+    def _split_parent(self, old_node: 'Node'):
+        parent = old_node.parent
+        new_node = self.InternalNode(page=self._allocate_new_page())
+        new_entries = old_node.split_entries()
+        new_node._entries = new_entries
+
+        if isinstance(old_node, RootNode):
+            # Convert the Root into an Internal
+            old_node = old_node.convert_to_internal()
+            ref = new_node.pop_smallest()
+            ref.before = old_node.page
+            ref.after = new_node.page
+            self._create_new_root(ref)
+            self._write_node(old_node)
+            self._write_node(new_node)
+            return
+
+        ref = Reference(
+            new_node.smallest_key, old_node.page, new_node.page
+        )
+        if parent.can_add_entry:
+            parent.insert_entry(ref)
+        else:
+            parent.insert_entry(ref)
+            self._split_parent(parent)
+
+        self._write_node(parent)
+        self._write_node(old_node)
+        self._write_node(new_node)
+
+    def _create_new_root(self, reference: 'Reference'):
         new_root = self.RootNode(page=self._allocate_new_page())
-        new_root.insert_entry(Reference(key, before, after))
+        new_root.insert_entry(reference)
         self._root_node_page = new_root.page
         self._write_metadata()
         self._write_node(new_root)
@@ -165,11 +205,12 @@ class Node(abc.ABC):
     _entry_class = None
 
     def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
-                 page: int=None):
+                 page: int=None, parent: 'Node'=None):
         self._page_size = page_size
         self._order = order
         self._entries = list()
         self.page = page
+        self.parent = parent
         if data:
             self.load(data)
 
@@ -229,6 +270,10 @@ class Node(abc.ABC):
     def num_children(self) -> int:
         pass
 
+    def pop_smallest(self) -> 'Entry':
+        """Remove and return the smallest entry."""
+        return self._entries.pop(0)
+
     def insert_entry(self, entry: 'Entry'):
         assert isinstance(entry, self._entry_class)
         self._entries.append(entry)
@@ -277,12 +322,12 @@ class Node(abc.ABC):
 class LonelyRootNode(Node):
 
     def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
-                 page: int=None):
+                 page: int=None, parent: 'Node'=None):
         self._node_type_int = 1
         self._entry_class = Record
         self._min_children = 0
         self._max_children = order - 1
-        super().__init__(page_size, order, data, page)
+        super().__init__(page_size, order, data, page, parent)
 
     @property
     def num_children(self) -> int:
@@ -297,27 +342,32 @@ class LonelyRootNode(Node):
 class RootNode(Node):
 
     def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
-                 page: int=None):
+                 page: int=None, parent: 'Node'=None):
         self._node_type_int = 2
         self._entry_class = Reference
         self._min_children = 2
         self._max_children = order
-        super().__init__(page_size, order, data, page)
+        super().__init__(page_size, order, data, page, parent)
 
     @property
     def num_children(self) -> int:
         return len(self._entries) + 1 if self._entries else 0
 
+    def convert_to_internal(self):
+        internal = InternalNode(self._page_size, self._order, page=self.page)
+        internal._entries = self._entries
+        return internal
+
 
 class InternalNode(Node):
 
     def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
-                 page: int=None):
+                 page: int=None, parent: 'Node'=None):
         self._node_type_int = 3
         self._entry_class = Reference
         self._min_children = math.ceil(order / 2)
         self._max_children = order
-        super().__init__(page_size, order, data, page)
+        super().__init__(page_size, order, data, page, parent)
 
     @property
     def num_children(self) -> int:
@@ -327,12 +377,12 @@ class InternalNode(Node):
 class LeafNode(Node):
 
     def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
-                 page: int=None):
+                 page: int=None, parent: 'Node'=None):
         self._node_type_int = 4
         self._entry_class = Record
         self._min_children = math.ceil(order / 2) - 1
         self._max_children = order - 1
-        super().__init__(page_size, order, data, page)
+        super().__init__(page_size, order, data, page, parent)
 
     @property
     def num_children(self) -> int:

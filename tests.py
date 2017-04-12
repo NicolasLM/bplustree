@@ -34,11 +34,16 @@ def test_insert_get_record_in_tree():
     b.close()
 
 
-def test_insert_split_in_tree():
+@pytest.mark.parametrize('start,stop,step', [
+    (0, 100, 1),
+    (10, 0, -1),
+    (1, 11, 1),
+])
+def test_insert_split_in_tree(start, stop, step):
     b = bplustree.BPlusTree()
-    for i in range(1, 11):
+    for i in range(start, stop, step):
         b.insert(i, i)
-    for i in range(1, 11):
+    for i in range(start, stop, step):
         assert b.get(i) == i
     b.close()
 
