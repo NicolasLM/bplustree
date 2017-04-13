@@ -69,34 +69,20 @@ def test_insert_split_in_tree(iterator, order):
     b.close()
 
 
-def test_node_limit_children():
-    lonely_root = LonelyRootNode(mmap.PAGESIZE, 7)
-    assert lonely_root._min_children == 0
-    assert lonely_root._max_children == 6
-    lonely_root = LonelyRootNode(mmap.PAGESIZE, 100)
-    assert lonely_root._min_children == 0
-    assert lonely_root._max_children == 99
-
-    root = RootNode(mmap.PAGESIZE, 7)
-    assert root._min_children == 2
-    assert root._max_children == 7
-    root = RootNode(mmap.PAGESIZE, 100)
-    assert root._min_children == 2
-    assert root._max_children == 100
-
-    internal = InternalNode(mmap.PAGESIZE, 7)
-    assert internal._min_children == 4
-    assert internal._max_children == 7
-    internal = InternalNode(mmap.PAGESIZE, 100)
-    assert internal._min_children == 50
-    assert internal._max_children == 100
-
-    leaf = LeafNode(mmap.PAGESIZE, 7)
-    assert leaf._min_children == 3
-    assert leaf._max_children == 6
-    leaf = LeafNode(mmap.PAGESIZE, 100)
-    assert leaf._min_children == 49
-    assert leaf._max_children == 99
+@pytest.mark.parametrize('klass,order,min_children,max_children', [
+    (LonelyRootNode, 7, 0, 6),
+    (LonelyRootNode, 100, 0, 99),
+    (RootNode, 7, 2, 7),
+    (RootNode, 100, 2, 100),
+    (InternalNode, 7, 4, 7),
+    (InternalNode, 100, 50, 100),
+    (LeafNode, 7, 3, 6),
+    (LeafNode, 100, 49, 99),
+])
+def test_node_limit_children(klass, order, min_children, max_children):
+    node = klass(mmap.PAGESIZE, order)
+    assert node._min_children == min_children
+    assert node._max_children == max_children
 
 
 def test_get_node_from_page_data():
