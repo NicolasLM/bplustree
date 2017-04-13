@@ -19,7 +19,7 @@ class Node(abc.ABC):
                  page: int=None, parent: 'Node'=None):
         self._page_size = page_size
         self._order = order
-        self._entries = list()
+        self.entries = list()
         self.page = page
         self.parent = parent
         if data:
@@ -34,11 +34,11 @@ class Node(abc.ABC):
         entry_length = self._entry_class.length
         for start_offset in range(end_header, used_page_length, entry_length):
             entry_data = data[start_offset:start_offset+entry_length]
-            self._entries.append(self._entry_class(data=entry_data))
+            self.entries.append(self._entry_class(data=entry_data))
 
     def dump(self) -> bytearray:
         data = bytearray()
-        for record in self._entries:
+        for record in self.entries:
             data.extend(record.dump())
 
         used_page_length = len(data) + 4
@@ -69,7 +69,7 @@ class Node(abc.ABC):
 
     @property
     def smallest_entry(self):
-        return self._entries[0]
+        return self.entries[0]
 
     @property
     def biggest_key(self):
@@ -77,7 +77,7 @@ class Node(abc.ABC):
 
     @property
     def biggest_entry(self):
-        return self._entries[-1]
+        return self.entries[-1]
 
     @abc.abstractproperty
     @property
@@ -86,18 +86,18 @@ class Node(abc.ABC):
 
     def pop_smallest(self) -> Entry:
         """Remove and return the smallest entry."""
-        return self._entries.pop(0)
+        return self.entries.pop(0)
 
     def insert_entry(self, entry: Entry):
         assert isinstance(entry, self._entry_class)
-        self._entries.append(entry)
-        self._entries.sort()
+        self.entries.append(entry)
+        self.entries.sort()
 
     def get_entry(self, key):
         entry = self._entry_class(key=key)  # Hack to compare and order
-        i = bisect.bisect_left(self._entries, entry)
-        if i != len(self._entries) and self._entries[i] == entry:
-            return self._entries[i]
+        i = bisect.bisect_left(self.entries, entry)
+        if i != len(self.entries) and self.entries[i] == entry:
+            return self.entries[i]
         raise ValueError('No entry for key {}'.format(key))
 
     def split_entries(self) -> list:
@@ -105,10 +105,10 @@ class Node(abc.ABC):
 
         Keep the lower part in the node and return the upper one.
         """
-        len_entries = len(self._entries)
-        rv = self._entries[len_entries//2:]
-        self._entries = self._entries[:len_entries//2]
-        assert len(self._entries) + len(rv) == len_entries
+        len_entries = len(self.entries)
+        rv = self.entries[len_entries//2:]
+        self.entries = self.entries[:len_entries//2]
+        assert len(self.entries) + len(rv) == len_entries
         return rv
 
     @classmethod
@@ -129,7 +129,7 @@ class Node(abc.ABC):
 
     def __repr__(self):
         return '<{}: page={} entries={}>'.format(
-            self.__class__.__name__, self.page, len(self._entries)
+            self.__class__.__name__, self.page, len(self.entries)
         )
 
 
@@ -142,7 +142,7 @@ class RecordNode(Node):
 
     @property
     def num_children(self) -> int:
-        return len(self._entries)
+        return len(self.entries)
 
 
 class LonelyRootNode(RecordNode):
@@ -160,7 +160,7 @@ class LonelyRootNode(RecordNode):
 
     def convert_to_leaf(self):
         leaf = LeafNode(self._page_size, self._order, page=self.page)
-        leaf._entries = self._entries
+        leaf.entries = self.entries
         return leaf
 
 
@@ -184,7 +184,7 @@ class ReferenceNode(Node):
 
     @property
     def num_children(self) -> int:
-        return len(self._entries) + 1 if self._entries else 0
+        return len(self.entries) + 1 if self.entries else 0
 
     def insert_entry(self, entry: 'Reference'):
         """Make sure that after of a reference matches before of the next one.
@@ -192,12 +192,12 @@ class ReferenceNode(Node):
         Probably very inefficient approach.
         """
         super().insert_entry(entry)
-        i = self._entries.index(entry)
+        i = self.entries.index(entry)
         if i > 0:
-            previous_entry = self._entries[i-1]
+            previous_entry = self.entries[i-1]
             previous_entry.after = entry.before
         try:
-            next_entry = self._entries[i+1]
+            next_entry = self.entries[i+1]
         except IndexError:
             pass
         else:
@@ -216,7 +216,7 @@ class RootNode(ReferenceNode):
 
     def convert_to_internal(self):
         internal = InternalNode(self._page_size, self._order, page=self.page)
-        internal._entries = self._entries
+        internal.entries = self.entries
         return internal
 
 

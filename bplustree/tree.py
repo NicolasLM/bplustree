@@ -127,7 +127,7 @@ class BPlusTree:
             page = node.biggest_entry.after
 
         else:
-            for ref_a, ref_b in utils.pairwise(node._entries):
+            for ref_a, ref_b in utils.pairwise(node.entries):
                 if ref_a.key <= key < ref_b.key:
                     page = ref_a.after
                     break
@@ -142,7 +142,7 @@ class BPlusTree:
         parent = old_node.parent
         new_node = self.LeafNode(page=self._allocate_new_page())
         new_entries = old_node.split_entries()
-        new_node._entries = new_entries
+        new_node.entries = new_entries
         ref = Reference(new_node.smallest_key, old_node.page,
                         new_node.page)
 
@@ -164,7 +164,7 @@ class BPlusTree:
         parent = old_node.parent
         new_node = self.InternalNode(page=self._allocate_new_page())
         new_entries = old_node.split_entries()
-        new_node._entries = new_entries
+        new_node.entries = new_entries
 
         ref = new_node.pop_smallest()
         ref.before = old_node.page
