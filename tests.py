@@ -34,17 +34,28 @@ def test_insert_get_record_in_tree():
     b.close()
 
 
-@pytest.mark.parametrize('start,stop,step', [
-    (0, 100, 1),
-    (10, 0, -1),
-    (1, 11, 1),
+@pytest.mark.parametrize('iterator,check_after_each_insert', [
+    (range(0, 10, 1), True),
+    (range(0, 1000, 1), False),
+    (range(10, 0, -1), True),
+    (range(1000, 0, -1), False),
 ])
-def test_insert_split_in_tree(start, stop, step):
+def test_insert_split_in_tree(iterator, check_after_each_insert):
+    inserted = set()
     b = bplustree.BPlusTree()
-    for i in range(start, stop, step):
+
+    for i in iterator:
         b.insert(i, i)
-    for i in range(start, stop, step):
-        assert b.get(i) == i
+        inserted.add(i)
+
+        if check_after_each_insert:
+            for x in inserted:
+                assert b.get(x) == x
+
+    if not check_after_each_insert:
+        for x in inserted:
+            assert b.get(x) == x
+
     b.close()
 
 
@@ -137,10 +148,10 @@ def test_leaf_node_serialization():
 
 def test_root_node_serialization():
     n1 = bplustree.RootNode(mmap.PAGESIZE, 7)
-    n1.insert_entry(bplustree.Reference(43, 1, 2))
-    n1.insert_entry(bplustree.Reference(42, 3, 4))
-    assert n1._entries == [bplustree.Reference(42, 3, 4),
-                           bplustree.Reference(43, 1, 2)]
+    n1.insert_entry(bplustree.Reference(43, 2, 3))
+    n1.insert_entry(bplustree.Reference(42, 1, 2))
+    assert n1._entries == [bplustree.Reference(42, 1, 2),
+                           bplustree.Reference(43, 2, 3)]
     data = n1.dump()
 
     n2 = bplustree.RootNode(mmap.PAGESIZE, 7, data=data)

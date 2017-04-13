@@ -131,32 +131,27 @@ class BPlusTree:
         child_node.parent = node
         return self._search_in_tree(key, child_node)
 
-    def _split_leaf(self, old_node: 'Node') -> 'LeafNode':
+    def _split_leaf(self, old_node: 'Node'):
         parent = old_node.parent
         new_node = self.LeafNode(page=self._allocate_new_page())
         new_entries = old_node.split_entries()
         new_node._entries = new_entries
+        ref = Reference(new_node.smallest_key, old_node.page,
+                        new_node.page)
 
         if isinstance(old_node, LonelyRootNode):
             # Convert the LonelyRoot into a Leaf
             old_node = old_node.convert_to_leaf()
-            ref = Reference(new_node.smallest_key, old_node.page,
-                            new_node.page)
             self._create_new_root(ref)
+        elif parent.can_add_entry:
+            parent.insert_entry(ref)
+            self._write_node(parent)
         else:
-            ref = Reference(
-                new_node.smallest_key, old_node.page, new_node.page
-            )
-            if parent.can_add_entry:
-                parent.insert_entry(ref)
-                self._write_node(parent)
-            else:
-                parent.insert_entry(ref)
-                self._split_parent(parent)
+            parent.insert_entry(ref)
+            self._split_parent(parent)
 
         self._write_node(old_node)
         self._write_node(new_node)
-        return new_node
 
     def _split_parent(self, old_node: 'Node'):
         parent = old_node.parent
@@ -164,27 +159,21 @@ class BPlusTree:
         new_entries = old_node.split_entries()
         new_node._entries = new_entries
 
+        ref = new_node.pop_smallest()
+        ref.before = old_node.page
+        ref.after = new_node.page
+
         if isinstance(old_node, RootNode):
             # Convert the Root into an Internal
             old_node = old_node.convert_to_internal()
-            ref = new_node.pop_smallest()
-            ref.before = old_node.page
-            ref.after = new_node.page
             self._create_new_root(ref)
-            self._write_node(old_node)
-            self._write_node(new_node)
-            return
-
-        ref = Reference(
-            new_node.smallest_key, old_node.page, new_node.page
-        )
-        if parent.can_add_entry:
+        elif parent.can_add_entry:
             parent.insert_entry(ref)
+            self._write_node(parent)
         else:
             parent.insert_entry(ref)
             self._split_parent(parent)
 
-        self._write_node(parent)
         self._write_node(old_node)
         self._write_node(new_node)
 
@@ -311,6 +300,7 @@ class Node(abc.ABC):
         elif node_type_int == 4:
             return LeafNode(page_size, order, data, page)
         else:
+            raise RuntimeError()
             assert False, 'No Node with type {} exists'.format(node_type_int)
 
     def __repr__(self):
@@ -358,6 +348,19 @@ class RootNode(Node):
         internal._entries = self._entries
         return internal
 
+    def insert_entry(self, entry: 'Entry'):
+        super().insert_entry(entry)
+        i = self._entries.index(entry)
+        if i > 0:
+            previous_entry = self._entries[i-1]
+            previous_entry.after = entry.before
+        try:
+            next_entry = self._entries[i+1]
+        except IndexError:
+            pass
+        else:
+            next_entry.before = entry.after
+
 
 class InternalNode(Node):
 
@@ -372,6 +375,19 @@ class InternalNode(Node):
     @property
     def num_children(self) -> int:
         return len(self._entries) + 1 if self._entries else 0
+
+    def insert_entry(self, entry: 'Entry'):
+        super().insert_entry(entry)
+        i = self._entries.index(entry)
+        if i > 0:
+            previous_entry = self._entries[i-1]
+            previous_entry.after = entry.before
+        try:
+            next_entry = self._entries[i+1]
+        except IndexError:
+            pass
+        else:
+            next_entry.before = entry.after
 
 
 class LeafNode(Node):
