@@ -2,7 +2,7 @@ from bplustree.entry import Record, Reference
 
 
 def test_record_serialization():
-    r1 = Record(42, 8080)
+    r1 = Record(42, b'foo')
     data = r1.dump()
 
     r2 = Record(data=data)

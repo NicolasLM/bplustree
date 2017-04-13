@@ -40,9 +40,9 @@ def test_empty_node_serialization(klass):
 
 def test_leaf_node_serialization():
     n1 = LeafNode(mmap.PAGESIZE, 7)
-    n1.insert_entry(Record(43, 8083))
-    n1.insert_entry(Record(42, 8082))
-    assert n1.entries == [Record(42, 8082), Record(43, 8083)]
+    n1.insert_entry(Record(43, b'43'))
+    n1.insert_entry(Record(42, b'42'))
+    assert n1.entries == [Record(42, b'42'), Record(43, b'43')]
     data = n1.dump()
 
     n2 = LeafNode(mmap.PAGESIZE, 7, data=data)

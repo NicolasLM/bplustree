@@ -32,8 +32,8 @@ def test_partial_node():
 
 def test_insert_get_record_in_tree():
     b = BPlusTree()
-    b.insert(1, 1024)
-    assert b.get(1) == 1024
+    b.insert(1, b'foo')
+    assert b.get(1) == b'foo'
     b.close()
 
 iterators = [
@@ -52,16 +52,16 @@ def test_insert_split_in_tree(iterator, order):
     b = BPlusTree(order=order)
 
     for i in iterator:
-        b.insert(i, i)
+        b.insert(i, str(i).encode())
         inserted.add(i)
 
         if check_after_each_insert:
             for x in inserted:
-                assert b.get(x) == x
+                assert b.get(x) == str(x).encode()
 
     if not check_after_each_insert:
         for x in inserted:
-            assert b.get(x) == x
+            assert b.get(x) == str(x).encode()
 
     b.close()
 

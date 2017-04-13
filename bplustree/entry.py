@@ -1,6 +1,7 @@
 import abc
 
-from .const import ENDIAN, KEY_BYTES, VALUE_BYTES, PAGE_REFERENCE_BYTES
+from .const import (ENDIAN, KEY_BYTES, VALUE_BYTES, PAGE_REFERENCE_BYTES,
+                    USED_VALUE_LENGTH_BYTES)
 
 
 class Entry(abc.ABC):
@@ -34,9 +35,9 @@ class Entry(abc.ABC):
 class Record(Entry):
     """A container for the actual data the tree stores."""
 
-    length = KEY_BYTES + VALUE_BYTES
+    length = KEY_BYTES + USED_VALUE_LENGTH_BYTES + VALUE_BYTES
 
-    def __init__(self, key=None, value=None, data: bytes=None):
+    def __init__(self, key=None, value: bytes=None, data: bytes=None):
         self.key = key
         self.value = value
         if data:
@@ -45,15 +46,27 @@ class Record(Entry):
     def load(self, data: bytes):
         assert len(data) == self.length
         end_key = KEY_BYTES
-        end_value = end_key + VALUE_BYTES
         self.key = int.from_bytes(data[0:end_key], ENDIAN)
-        self.value = int.from_bytes(data[end_key:end_value], ENDIAN)
+
+        end_used_value_length = end_key + USED_VALUE_LENGTH_BYTES
+        used_value_length = int.from_bytes(
+            data[end_key:end_used_value_length], ENDIAN
+        )
+        assert 0 <= used_value_length <= VALUE_BYTES
+
+        end_value = end_used_value_length + used_value_length
+        self.value = data[end_used_value_length:end_value]
 
     def dump(self) -> bytes:
         assert isinstance(self.key, int)
-        assert isinstance(self.value, int)
-        data = (self.key.to_bytes(KEY_BYTES, ENDIAN)
-                + self.value.to_bytes(VALUE_BYTES, ENDIAN))
+        assert isinstance(self.value, bytes)
+        used_value_length = len(self.value)
+        data = (
+            self.key.to_bytes(KEY_BYTES, ENDIAN) +
+            used_value_length.to_bytes(USED_VALUE_LENGTH_BYTES, ENDIAN) +
+            self.value +
+            bytes(VALUE_BYTES - used_value_length)
+        )
         return data
 
     def __repr__(self):

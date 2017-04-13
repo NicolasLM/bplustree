@@ -100,12 +100,17 @@ class BPlusTree:
         assert isinstance(root_node, (LonelyRootNode, RootNode))
         return root_node
 
-    def get(self, key):
+    def get(self, key) -> bytes:
         node = self._search_in_tree(key, self._root_node)
         record = node.get_entry(key)
+        assert isinstance(record.value, bytes)
         return record.value
 
-    def insert(self, key, value):
+    def insert(self, key, value: bytes):
+
+        if not isinstance(value, bytes):
+            ValueError('Values must be bytes objects')
+
         node = self._search_in_tree(key, self._root_node)
         if node.can_add_entry:
             node.insert_entry(Record(key, value))
