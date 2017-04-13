@@ -300,7 +300,6 @@ class Node(abc.ABC):
         elif node_type_int == 4:
             return LeafNode(page_size, order, data, page)
         else:
-            raise RuntimeError()
             assert False, 'No Node with type {} exists'.format(node_type_int)
 
     def __repr__(self):
@@ -309,19 +308,30 @@ class Node(abc.ABC):
         )
 
 
-class LonelyRootNode(Node):
+class RecordNode(Node):
 
     def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None):
-        self._node_type_int = 1
         self._entry_class = Record
-        self._min_children = 0
-        self._max_children = order - 1
         super().__init__(page_size, order, data, page, parent)
 
     @property
     def num_children(self) -> int:
         return len(self._entries)
+
+
+class LonelyRootNode(RecordNode):
+    """A Root node that holds records.
+
+    It is an exception for when there is only a single node in the tree.
+    """
+
+    def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
+                 page: int=None, parent: 'Node'=None):
+        self._node_type_int = 1
+        self._min_children = 0
+        self._max_children = order - 1
+        super().__init__(page_size, order, data, page, parent)
 
     def convert_to_leaf(self):
         leaf = LeafNode(self._page_size, self._order, page=self.page)
@@ -329,80 +339,71 @@ class LonelyRootNode(Node):
         return leaf
 
 
-class RootNode(Node):
+class LeafNode(RecordNode):
+    """Node that holds the actual records within the tree."""
 
     def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None):
-        self._node_type_int = 2
+        self._node_type_int = 4
+        self._min_children = math.ceil(order / 2) - 1
+        self._max_children = order - 1
+        super().__init__(page_size, order, data, page, parent)
+
+
+class ReferenceNode(Node):
+
+    def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
+                 page: int=None, parent: 'Node'=None):
         self._entry_class = Reference
-        self._min_children = 2
-        self._max_children = order
         super().__init__(page_size, order, data, page, parent)
 
     @property
     def num_children(self) -> int:
         return len(self._entries) + 1 if self._entries else 0
+
+    def insert_entry(self, entry: 'Reference'):
+        """Make sure that after of a reference matches before of the next one.
+
+        Probably very inefficient approach.
+        """
+        super().insert_entry(entry)
+        i = self._entries.index(entry)
+        if i > 0:
+            previous_entry = self._entries[i-1]
+            previous_entry.after = entry.before
+        try:
+            next_entry = self._entries[i+1]
+        except IndexError:
+            pass
+        else:
+            next_entry.before = entry.after
+
+
+class RootNode(ReferenceNode):
+    """The first node at the top of the tree."""
+
+    def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
+                 page: int=None, parent: 'Node'=None):
+        self._node_type_int = 2
+        self._min_children = 2
+        self._max_children = order
+        super().__init__(page_size, order, data, page, parent)
 
     def convert_to_internal(self):
         internal = InternalNode(self._page_size, self._order, page=self.page)
         internal._entries = self._entries
         return internal
 
-    def insert_entry(self, entry: 'Entry'):
-        super().insert_entry(entry)
-        i = self._entries.index(entry)
-        if i > 0:
-            previous_entry = self._entries[i-1]
-            previous_entry.after = entry.before
-        try:
-            next_entry = self._entries[i+1]
-        except IndexError:
-            pass
-        else:
-            next_entry.before = entry.after
 
-
-class InternalNode(Node):
+class InternalNode(ReferenceNode):
+    """Node that only holds references to other Internal nodes or Leaves."""
 
     def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None):
         self._node_type_int = 3
-        self._entry_class = Reference
         self._min_children = math.ceil(order / 2)
         self._max_children = order
         super().__init__(page_size, order, data, page, parent)
-
-    @property
-    def num_children(self) -> int:
-        return len(self._entries) + 1 if self._entries else 0
-
-    def insert_entry(self, entry: 'Entry'):
-        super().insert_entry(entry)
-        i = self._entries.index(entry)
-        if i > 0:
-            previous_entry = self._entries[i-1]
-            previous_entry.after = entry.before
-        try:
-            next_entry = self._entries[i+1]
-        except IndexError:
-            pass
-        else:
-            next_entry.before = entry.after
-
-
-class LeafNode(Node):
-
-    def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
-                 page: int=None, parent: 'Node'=None):
-        self._node_type_int = 4
-        self._entry_class = Record
-        self._min_children = math.ceil(order / 2) - 1
-        self._max_children = order - 1
-        super().__init__(page_size, order, data, page, parent)
-
-    @property
-    def num_children(self) -> int:
-        return len(self._entries)
 
 
 class Entry(abc.ABC):
@@ -434,6 +435,7 @@ class Entry(abc.ABC):
 
 
 class Record(Entry):
+    """A container for the actual data the tree stores."""
 
     length = 16
 
@@ -461,6 +463,7 @@ class Record(Entry):
 
 
 class Reference(Entry):
+    """A container for a reference to other nodes."""
 
     length = 24
 
