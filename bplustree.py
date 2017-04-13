@@ -7,7 +7,27 @@ import math
 import mmap
 from typing import Optional, Union, Iterable
 
+# Endianess for storing numbers
 ENDIAN = 'little'
+
+# Bytes used for storing keys
+KEY_BYTES = 8
+
+# Bytes used for storing values
+VALUE_BYTES = 8
+
+# Bytes used for storing references to pages
+# Can address 16 TB of memory with 4 KB pages
+PAGE_REFERENCE_BYTES = 4
+
+# Bytes used for storing the type of the node in page header
+NODE_TYPE_BYTES = 1
+
+# Bytes used for storing the length of the page payload in page header
+USED_PAGE_LENGTH_BYTES = 3
+
+# Bytes used for storing general purpose integers like file metadata
+OTHERS_BYTES = 4
 
 
 class BPlusTree:
@@ -71,15 +91,23 @@ class BPlusTree:
                                    page=page)
 
     def _read_metadata(self):
-        self._root_node_page = int.from_bytes(self._mm[0:3], ENDIAN)
-        self._page_size = int.from_bytes(self._mm[4:7], ENDIAN)
-        self._order = int.from_bytes(self._mm[8:11], ENDIAN)
+        end_root_node_page = PAGE_REFERENCE_BYTES
+        self._root_node_page = int.from_bytes(
+            self._mm[0:end_root_node_page], ENDIAN
+        )
+        end_page_size = end_root_node_page + OTHERS_BYTES
+        self._page_size = int.from_bytes(
+            self._mm[end_root_node_page:end_page_size], ENDIAN
+        )
+        end_order = end_page_size + OTHERS_BYTES
+        self._order = int.from_bytes(self._mm[end_page_size:end_order], ENDIAN)
 
     def _write_metadata(self):
         self._mm.seek(0)
-        self._mm.write(self._root_node_page.to_bytes(4, ENDIAN))
-        self._mm.write(self._page_size.to_bytes(4, ENDIAN))
-        self._mm.write(self._order.to_bytes(4, ENDIAN))
+        self._mm.write(self._root_node_page.to_bytes(PAGE_REFERENCE_BYTES,
+                                                     ENDIAN))
+        self._mm.write(self._page_size.to_bytes(OTHERS_BYTES, ENDIAN))
+        self._mm.write(self._order.to_bytes(OTHERS_BYTES, ENDIAN))
 
     def _allocate_new_page(self) -> int:
         rv = copy.copy(self._next_available_page)
@@ -205,9 +233,12 @@ class Node(abc.ABC):
 
     def load(self, data: bytes):
         assert len(data) == self._page_size
-        used_page_length = int.from_bytes(data[1:4], ENDIAN)
+        end_header = NODE_TYPE_BYTES + USED_PAGE_LENGTH_BYTES
+        used_page_length = int.from_bytes(
+            data[NODE_TYPE_BYTES:end_header], ENDIAN
+        )
         entry_length = self._entry_class.length
-        for start_offset in range(4, used_page_length, entry_length):
+        for start_offset in range(end_header, used_page_length, entry_length):
             entry_data = data[start_offset:start_offset+entry_length]
             self._entries.append(self._entry_class(data=entry_data))
 
@@ -289,7 +320,7 @@ class Node(abc.ABC):
     @classmethod
     def from_page_data(cls, page_size: int, order: int, data: bytes,
                        page: int=None) -> 'Node':
-        node_type_byte = data[0:1]
+        node_type_byte = data[0:NODE_TYPE_BYTES]
         node_type_int = int.from_bytes(node_type_byte, ENDIAN)
         if node_type_int == 1:
             return LonelyRootNode(page_size, order, data, page)
@@ -437,7 +468,7 @@ class Entry(abc.ABC):
 class Record(Entry):
     """A container for the actual data the tree stores."""
 
-    length = 16
+    length = KEY_BYTES + VALUE_BYTES
 
     def __init__(self, key=None, value=None, data: bytes=None):
         self.key = key
@@ -446,14 +477,17 @@ class Record(Entry):
             self.load(data)
 
     def load(self, data: bytes):
-        assert len(data) == 16
-        self.key = int.from_bytes(data[0:8], ENDIAN)
-        self.value = int.from_bytes(data[8:16], ENDIAN)
+        assert len(data) == self.length
+        end_key = KEY_BYTES
+        end_value = end_key + VALUE_BYTES
+        self.key = int.from_bytes(data[0:end_key], ENDIAN)
+        self.value = int.from_bytes(data[end_key:end_value], ENDIAN)
 
     def dump(self) -> bytes:
         assert isinstance(self.key, int)
         assert isinstance(self.value, int)
-        data = self.key.to_bytes(8, ENDIAN) + self.value.to_bytes(8, ENDIAN)
+        data = (self.key.to_bytes(KEY_BYTES, ENDIAN)
+                + self.value.to_bytes(VALUE_BYTES, ENDIAN))
         return data
 
     def __repr__(self):
@@ -465,7 +499,7 @@ class Record(Entry):
 class Reference(Entry):
     """A container for a reference to other nodes."""
 
-    length = 24
+    length = 2 * PAGE_REFERENCE_BYTES + KEY_BYTES
 
     def __init__(self, key=None, before=None, after=None, data: bytes=None):
         self.key = key
@@ -475,19 +509,22 @@ class Reference(Entry):
             self.load(data)
 
     def load(self, data: bytes):
-        assert len(data) == 24
-        self.before = int.from_bytes(data[0:8], ENDIAN)
-        self.key = int.from_bytes(data[8:16], ENDIAN)
-        self.after = int.from_bytes(data[16:24], ENDIAN)
+        assert len(data) == self.length
+        end_before = PAGE_REFERENCE_BYTES
+        end_key = end_before + KEY_BYTES
+        end_after = end_key + PAGE_REFERENCE_BYTES
+        self.before = int.from_bytes(data[0:end_before], ENDIAN)
+        self.key = int.from_bytes(data[end_before:end_key], ENDIAN)
+        self.after = int.from_bytes(data[end_key:end_after], ENDIAN)
 
     def dump(self) -> bytes:
         assert isinstance(self.before, int)
         assert isinstance(self.key, int)
         assert isinstance(self.after, int)
         data = (
-            self.before.to_bytes(8, ENDIAN) +
-            self.key.to_bytes(8, ENDIAN) +
-            self.after.to_bytes(8, ENDIAN)
+            self.before.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN) +
+            self.key.to_bytes(KEY_BYTES, ENDIAN) +
+            self.after.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN)
         )
         return data
 
