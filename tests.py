@@ -1,3 +1,4 @@
+import itertools
 import mmap
 
 import pytest
@@ -33,16 +34,20 @@ def test_insert_get_record_in_tree():
     assert b.get(1) == 1024
     b.close()
 
+iterators = [
+    range(0, 1000, 1),
+    range(1000, 0, -1),
+    list(range(0, 1000, 2)) + list(range(1, 1000, 2))
+]
+orders = [3, 4, 5, 6, 100]
+matrix = itertools.product(iterators, orders)
 
-@pytest.mark.parametrize('iterator,check_after_each_insert', [
-    (range(0, 10, 1), True),
-    (range(0, 1000, 1), False),
-    (range(10, 0, -1), True),
-    (range(1000, 0, -1), False),
-])
-def test_insert_split_in_tree(iterator, check_after_each_insert):
+
+@pytest.mark.parametrize('iterator,order', matrix)
+def test_insert_split_in_tree(iterator, order):
+    check_after_each_insert = False
     inserted = set()
-    b = bplustree.BPlusTree()
+    b = bplustree.BPlusTree(order=order)
 
     for i in iterator:
         b.insert(i, i)
