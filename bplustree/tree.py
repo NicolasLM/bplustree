@@ -1,6 +1,7 @@
 import copy
 from functools import partial
 import mmap
+import os.path
 from typing import Optional, Union
 
 from . import utils
@@ -12,22 +13,27 @@ from .node import Node, LonelyRootNode, RootNode, InternalNode, LeafNode
 class BPlusTree:
 
     def __init__(self, filename: Optional[str]=None,
-                 length: Optional[int]=None,
                  page_size: int= 4096, order: int=4, key_size: int=16,
                  value_size: int=16):
-        if not length:
-            length = 5000 * mmap.PAGESIZE
+        self._max_page = 1000000  # TODO: to remove
         if not filename:
-            self._fd = None
+            length = 5000 * page_size
             self._mm = mmap.mmap(-1, length, access=mmap.ACCESS_WRITE)
-            self._create_init_values(order, length, page_size,
-                                     key_size, value_size)
-            self._write_metadata()
+            self._create_init_values(page_size, order, key_size, value_size)
+            self._write_page(0, self._dump_metadata())
+        elif not os.path.exists(filename):
+            self._mm = open(filename, mode='x+b', buffering=0)
+            self._create_init_values(page_size, order, key_size, value_size)
+            self._write_page(0, self._dump_metadata())
         else:
-            self._fd = open(filename, mode='r+b')
-            self._mm = mmap.mmap(self._fd.fileno(), 0)
-            self._read_metadata()
+            self._mm = open(filename, mode='r+b', buffering=0)
+            # Temporary tree conf used for loading the real one stored in
+            # file metadata
+            self._tree_conf = TreeConf(page_size, order, key_size, value_size)
+            self._load_metadata(self._read_page(0))
+            self._create_partials()
 
+    def _create_partials(self):
         self.LonelyRootNode = partial(LonelyRootNode, self._tree_conf)
         self.RootNode = partial(RootNode, self._tree_conf)
         self.InternalNode = partial(InternalNode, self._tree_conf)
@@ -35,24 +41,19 @@ class BPlusTree:
         self.Record = partial(Record, self._tree_conf)
         self.Reference = partial(Reference, self._tree_conf)
 
-        root_node_data = self.LonelyRootNode().dump()
-        self._write_page(self._root_node_page, root_node_data)
-
     def close(self):
         self._mm.flush()
         self._mm.close()
-        if self._fd:
-            self._fd.close()
 
-    def _create_init_values(self, order, length, page_size, key_size,
-                            value_size):
+    def _create_init_values(self, page_size, order, key_size, value_size):
         self._tree_conf = TreeConf(page_size, order, key_size, value_size)
         self._root_node_page = 1
-        self._max_page = length / self._tree_conf.page_size
         self._next_available_page = 2
+        self._create_partials()
+        self._write_node(self.LonelyRootNode(page=1))
 
     def _write_page(self, page: int, data: Union[bytes, bytearray]):
-        assert 0 < page <= self._max_page
+        assert 0 <= page <= self._max_page
         assert len(data) == self._tree_conf.page_size
         self._mm.seek(page * self._tree_conf.page_size)
         self._mm.write(data)
@@ -62,10 +63,16 @@ class BPlusTree:
         self._write_page(node.page, data)
 
     def _read_page(self, page: int) -> bytes:
-        assert 0 < page <= self._max_page
+        assert 0 <= page <= self._max_page
         start = page * self._tree_conf.page_size
         stop = start + self._tree_conf.page_size
-        data = self._mm[start:stop]
+        self._mm.seek(start)
+        data = bytes()
+        while self._mm.tell() < stop:
+            read_data = self._mm.read(stop - self._mm.tell())
+            if read_data == b'':
+                raise ValueError('Read until the end of file')
+            data += read_data
         assert len(data) == self._tree_conf.page_size
         return data
 
@@ -73,32 +80,46 @@ class BPlusTree:
         data = self._read_page(page)
         return Node.from_page_data(self._tree_conf, data=data, page=page)
 
-    def _read_metadata(self):
+    def _load_metadata(self, data: bytes):
         end_root_node_page = PAGE_REFERENCE_BYTES
         self._root_node_page = int.from_bytes(
-            self._mm[0:end_root_node_page], ENDIAN
+            data[0:end_root_node_page], ENDIAN
         )
         end_page_size = end_root_node_page + OTHERS_BYTES
-        self._tree_conf.page_size = int.from_bytes(
-            self._mm[end_root_node_page:end_page_size], ENDIAN
+        page_size = int.from_bytes(
+            data[end_root_node_page:end_page_size], ENDIAN
         )
         end_order = end_page_size + OTHERS_BYTES
-        self._tree_conf.order = int.from_bytes(
-            self._mm[end_page_size:end_order], ENDIAN
+        order = int.from_bytes(
+            data[end_page_size:end_order], ENDIAN
         )
+        end_key_size = end_order + OTHERS_BYTES
+        key_size = int.from_bytes(
+            data[end_order:end_key_size], ENDIAN
+        )
+        end_value_size = end_key_size + OTHERS_BYTES
+        value_size = int.from_bytes(
+            data[end_key_size:end_value_size], ENDIAN
+        )
+        loaded_tree_conf = TreeConf(page_size, order, key_size, value_size)
+        if loaded_tree_conf != self._tree_conf:
+            raise ValueError('Configuration of tree does not match file')
 
-    def _write_metadata(self):
-        self._mm.seek(0)
-        self._mm.write(self._root_node_page.to_bytes(PAGE_REFERENCE_BYTES,
-                                                     ENDIAN))
-        self._mm.write(self._tree_conf.page_size.to_bytes(OTHERS_BYTES,
-                                                          ENDIAN))
-        self._mm.write(self._tree_conf.order.to_bytes(OTHERS_BYTES, ENDIAN))
+    def _dump_metadata(self) -> bytes:
+        length = PAGE_REFERENCE_BYTES + 4 * OTHERS_BYTES
+        return (
+            self._root_node_page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN) +
+            self._tree_conf.page_size.to_bytes(OTHERS_BYTES, ENDIAN) +
+            self._tree_conf.order.to_bytes(OTHERS_BYTES, ENDIAN) +
+            self._tree_conf.key_size.to_bytes(OTHERS_BYTES, ENDIAN) +
+            self._tree_conf.value_size.to_bytes(OTHERS_BYTES, ENDIAN) +
+            bytes(self._tree_conf.page_size - length)
+        )
 
     def _allocate_new_page(self) -> int:
         rv = copy.copy(self._next_available_page)
         self._next_available_page += 1
-        self._write_metadata()
+        self._write_page(0, self._dump_metadata())
         return rv
 
     @property
@@ -200,5 +221,5 @@ class BPlusTree:
         new_root = self.RootNode(page=self._allocate_new_page())
         new_root.insert_entry(reference)
         self._root_node_page = new_root.page
-        self._write_metadata()
+        self._write_page(0, self._dump_metadata())
         self._write_node(new_root)

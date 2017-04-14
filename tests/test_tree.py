@@ -1,4 +1,7 @@
+import io
 import itertools
+import mmap
+import os
 
 import pytest
 
@@ -9,7 +12,24 @@ from bplustree.tree import BPlusTree
 
 def test_create_in_memory():
     b = BPlusTree()
-    assert b._fd is None
+    assert isinstance(b._mm, mmap.mmap)
+    b.close()
+
+
+def test_create_and_load_file():
+    filename = '/tmp/testfile.db'
+
+    if os.path.isfile(filename):
+        os.unlink(filename)
+
+    b = BPlusTree(filename=filename)
+    assert isinstance(b._mm, io.FileIO)
+    b.insert(5, b'foo')
+    b.close()
+
+    b = BPlusTree(filename=filename)
+    assert isinstance(b._mm, io.FileIO)
+    assert b.get(5) == b'foo'
     b.close()
 
 
@@ -54,28 +74,35 @@ orders = [3, 4, 50]
 page_sizes = [4096, 8192]
 key_sizes = [4, 16]
 values_sizes = [4, 16]
+file_names = [None, '/tmp/testfile.index']
 matrix = itertools.product(iterators, orders, page_sizes,
-                           key_sizes, values_sizes)
+                           key_sizes, values_sizes, file_names)
 
 
-@pytest.mark.parametrize('iterator,order,page_size,k_size,v_size', matrix)
-def test_insert_split_in_tree(iterator, order, page_size, k_size, v_size):
-    check_after_each_insert = False
+@pytest.mark.parametrize('iterator,order,page_size,k_size,v_size,filename',
+                         matrix)
+def test_insert_split_in_tree(iterator, order, page_size, k_size, v_size,
+                              filename):
     inserted = set()
-    b = BPlusTree(order=order, page_size=page_size,
+
+    if filename and os.path.isfile(filename):
+        os.unlink(filename)
+
+    b = BPlusTree(filename=filename, order=order, page_size=page_size,
                   key_size=k_size, value_size=v_size)
 
     for i in iterator:
         b.insert(i, str(i).encode())
         inserted.add(i)
 
-        if check_after_each_insert:
-            for x in inserted:
-                assert b.get(x) == str(x).encode()
+    if filename:
+        # Reload tree from file before checking values
+        b.close()
+        b = BPlusTree(filename=filename, order=order, page_size=page_size,
+                      key_size=k_size, value_size=v_size)
 
-    if not check_after_each_insert:
-        for x in inserted:
-            assert b.get(x) == str(x).encode()
+    for x in inserted:
+        assert b.get(x) == str(x).encode()
 
     b.close()
 
