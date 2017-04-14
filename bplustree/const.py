@@ -1,9 +1,7 @@
+from collections import namedtuple
+
 # Endianess for storing numbers
 ENDIAN = 'little'
-
-# Bytes used for storing keys or values
-KEY_BYTES = 16
-VALUE_BYTES = 16
 
 # Bytes used for storing references to pages
 # Can address 16 TB of memory with 4 KB pages
@@ -22,3 +20,11 @@ USED_VALUE_LENGTH_BYTES = 2
 
 # Bytes used for storing general purpose integers like file metadata
 OTHERS_BYTES = 4
+
+
+TreeConf = namedtuple('TreeConf', [
+    'page_size',  # Size of a page within the tree in bytes
+    'order',  # Branching factor of the tree
+    'key_size',  # Maximum size of a key in bytes
+    'value_size',  # Maximum size of a value in bytes
+])

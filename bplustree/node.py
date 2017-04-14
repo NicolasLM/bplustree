@@ -3,7 +3,7 @@ import bisect
 import math
 from typing import Optional
 
-from .const import ENDIAN, NODE_TYPE_BYTES, USED_PAGE_LENGTH_BYTES
+from .const import ENDIAN, NODE_TYPE_BYTES, USED_PAGE_LENGTH_BYTES, TreeConf
 from .entry import Entry, Record, Reference
 
 
@@ -15,10 +15,9 @@ class Node(abc.ABC):
     _min_children = 0
     _entry_class = None
 
-    def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
+    def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None):
-        self._page_size = page_size
-        self._order = order
+        self._tree_conf = tree_conf
         self.entries = list()
         self.page = page
         self.parent = parent
@@ -26,15 +25,16 @@ class Node(abc.ABC):
             self.load(data)
 
     def load(self, data: bytes):
-        assert len(data) == self._page_size
+        assert len(data) == self._tree_conf.page_size
         end_header = NODE_TYPE_BYTES + USED_PAGE_LENGTH_BYTES
         used_page_length = int.from_bytes(
             data[NODE_TYPE_BYTES:end_header], ENDIAN
         )
-        entry_length = self._entry_class.length
+        entry_length = self._entry_class(self._tree_conf).length
         for start_offset in range(end_header, used_page_length, entry_length):
             entry_data = data[start_offset:start_offset+entry_length]
-            self.entries.append(self._entry_class(data=entry_data))
+            entry = self._entry_class(self._tree_conf, data=entry_data)
+            self.entries.append(entry)
 
     def dump(self) -> bytearray:
         data = bytearray()
@@ -42,16 +42,16 @@ class Node(abc.ABC):
             data.extend(record.dump())
 
         used_page_length = len(data) + 4
-        assert 0 <= used_page_length < self._page_size
+        assert 0 <= used_page_length < self._tree_conf.page_size
         header = (self._node_type_int.to_bytes(1, ENDIAN) +
                   used_page_length.to_bytes(3, ENDIAN))
 
         data = bytearray(header) + data
 
-        padding = self._page_size - len(data)
+        padding = self._tree_conf.page_size - len(data)
         assert padding >= 0
         data.extend(bytearray(padding))
-        assert len(data) == self._page_size
+        assert len(data) == self._tree_conf.page_size
 
         return data
 
@@ -94,7 +94,10 @@ class Node(abc.ABC):
         self.entries.sort()
 
     def get_entry(self, key):
-        entry = self._entry_class(key=key)  # Hack to compare and order
+        entry = self._entry_class(
+            self._tree_conf,
+            key=key  # Hack to compare and order
+        )
         i = bisect.bisect_left(self.entries, entry)
         if i != len(self.entries) and self.entries[i] == entry:
             return self.entries[i]
@@ -112,18 +115,18 @@ class Node(abc.ABC):
         return rv
 
     @classmethod
-    def from_page_data(cls, page_size: int, order: int, data: bytes,
+    def from_page_data(cls, tree_conf: TreeConf, data: bytes,
                        page: int=None) -> 'Node':
         node_type_byte = data[0:NODE_TYPE_BYTES]
         node_type_int = int.from_bytes(node_type_byte, ENDIAN)
         if node_type_int == 1:
-            return LonelyRootNode(page_size, order, data, page)
+            return LonelyRootNode(tree_conf, data, page)
         elif node_type_int == 2:
-            return RootNode(page_size, order, data, page)
+            return RootNode(tree_conf, data, page)
         elif node_type_int == 3:
-            return InternalNode(page_size, order, data, page)
+            return InternalNode(tree_conf, data, page)
         elif node_type_int == 4:
-            return LeafNode(page_size, order, data, page)
+            return LeafNode(tree_conf, data, page)
         else:
             assert False, 'No Node with type {} exists'.format(node_type_int)
 
@@ -135,10 +138,10 @@ class Node(abc.ABC):
 
 class RecordNode(Node):
 
-    def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
+    def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None):
         self._entry_class = Record
-        super().__init__(page_size, order, data, page, parent)
+        super().__init__(tree_conf, data, page, parent)
 
     @property
     def num_children(self) -> int:
@@ -151,15 +154,15 @@ class LonelyRootNode(RecordNode):
     It is an exception for when there is only a single node in the tree.
     """
 
-    def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
+    def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None):
         self._node_type_int = 1
         self._min_children = 0
-        self._max_children = order - 1
-        super().__init__(page_size, order, data, page, parent)
+        self._max_children = tree_conf.order - 1
+        super().__init__(tree_conf, data, page, parent)
 
     def convert_to_leaf(self):
-        leaf = LeafNode(self._page_size, self._order, page=self.page)
+        leaf = LeafNode(self._tree_conf, page=self.page)
         leaf.entries = self.entries
         return leaf
 
@@ -167,20 +170,20 @@ class LonelyRootNode(RecordNode):
 class LeafNode(RecordNode):
     """Node that holds the actual records within the tree."""
 
-    def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
+    def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None):
         self._node_type_int = 4
-        self._min_children = math.ceil(order / 2) - 1
-        self._max_children = order - 1
-        super().__init__(page_size, order, data, page, parent)
+        self._min_children = math.ceil(tree_conf.order / 2) - 1
+        self._max_children = tree_conf.order - 1
+        super().__init__(tree_conf, data, page, parent)
 
 
 class ReferenceNode(Node):
 
-    def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
+    def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None):
         self._entry_class = Reference
-        super().__init__(page_size, order, data, page, parent)
+        super().__init__(tree_conf, data, page, parent)
 
     @property
     def num_children(self) -> int:
@@ -207,15 +210,15 @@ class ReferenceNode(Node):
 class RootNode(ReferenceNode):
     """The first node at the top of the tree."""
 
-    def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
+    def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None):
         self._node_type_int = 2
         self._min_children = 2
-        self._max_children = order
-        super().__init__(page_size, order, data, page, parent)
+        self._max_children = tree_conf.order
+        super().__init__(tree_conf, data, page, parent)
 
     def convert_to_internal(self):
-        internal = InternalNode(self._page_size, self._order, page=self.page)
+        internal = InternalNode(self._tree_conf, page=self.page)
         internal.entries = self.entries
         return internal
 
@@ -223,9 +226,9 @@ class RootNode(ReferenceNode):
 class InternalNode(ReferenceNode):
     """Node that only holds references to other Internal nodes or Leaves."""
 
-    def __init__(self, page_size: int, order: int, data: Optional[bytes]=None,
+    def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None):
         self._node_type_int = 3
-        self._min_children = math.ceil(order / 2)
-        self._max_children = order
-        super().__init__(page_size, order, data, page, parent)
+        self._min_children = math.ceil(tree_conf.order / 2)
+        self._max_children = tree_conf.order
+        super().__init__(tree_conf, data, page, parent)

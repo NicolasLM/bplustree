@@ -1,7 +1,7 @@
 import abc
 
-from .const import (ENDIAN, KEY_BYTES, VALUE_BYTES, PAGE_REFERENCE_BYTES,
-                    USED_KEY_LENGTH_BYTES, USED_VALUE_LENGTH_BYTES)
+from .const import (ENDIAN, PAGE_REFERENCE_BYTES,
+                    USED_KEY_LENGTH_BYTES, USED_VALUE_LENGTH_BYTES, TreeConf)
 
 
 class Entry(abc.ABC):
@@ -35,31 +35,36 @@ class Entry(abc.ABC):
 class Record(Entry):
     """A container for the actual data the tree stores."""
 
-    length = (USED_KEY_LENGTH_BYTES + KEY_BYTES +
-              USED_VALUE_LENGTH_BYTES + VALUE_BYTES)
-
-    def __init__(self, key=None, value: bytes=None, data: bytes=None):
+    def __init__(self, tree_conf: TreeConf, key=None,
+                 value: bytes=None, data: bytes=None):
+        self._tree_conf = tree_conf
         self.key = key
         self.value = value
+        self.length = (
+            USED_KEY_LENGTH_BYTES + self._tree_conf.key_size +
+            USED_VALUE_LENGTH_BYTES + self._tree_conf.value_size
+        )
         if data:
             self.load(data)
+        if self.value:
+            assert len(self.value) <= self._tree_conf.value_size
 
     def load(self, data: bytes):
         assert len(data) == self.length
 
         end_used_key_length = USED_KEY_LENGTH_BYTES
         used_key_length = int.from_bytes(data[0:end_used_key_length], ENDIAN)
-        assert 0 <= used_key_length <= KEY_BYTES
+        assert 0 <= used_key_length <= self._tree_conf.key_size
 
         end_key = end_used_key_length + used_key_length
         self.key = int.from_bytes(data[end_used_key_length:end_key], ENDIAN)
 
-        start_used_value_length = end_used_key_length + KEY_BYTES
+        start_used_value_length = end_used_key_length + self._tree_conf.key_size
         end_used_value_length = end_key + USED_VALUE_LENGTH_BYTES
         used_value_length = int.from_bytes(
             data[start_used_value_length:end_used_value_length], ENDIAN
         )
-        assert 0 <= used_value_length <= VALUE_BYTES
+        assert 0 <= used_value_length <= self._tree_conf.value_size
 
         end_value = end_used_value_length + used_value_length
         self.value = data[end_used_value_length:end_value]
@@ -67,16 +72,16 @@ class Record(Entry):
     def dump(self) -> bytes:
         assert isinstance(self.key, int)
         assert isinstance(self.value, bytes)
-        key_as_bytes = self.key.to_bytes(KEY_BYTES, ENDIAN)
+        key_as_bytes = self.key.to_bytes(self._tree_conf.key_size, ENDIAN)
         used_key_length = len(key_as_bytes)
         used_value_length = len(self.value)
         data = (
             used_key_length.to_bytes(USED_VALUE_LENGTH_BYTES, ENDIAN) +
             key_as_bytes +
-            bytes(KEY_BYTES - used_key_length) +
+            bytes(self._tree_conf.key_size - used_key_length) +
             used_value_length.to_bytes(USED_VALUE_LENGTH_BYTES, ENDIAN) +
             self.value +
-            bytes(VALUE_BYTES - used_value_length)
+            bytes(self._tree_conf.value_size - used_value_length)
         )
         return data
 
@@ -89,9 +94,14 @@ class Record(Entry):
 class Reference(Entry):
     """A container for a reference to other nodes."""
 
-    length = 2 * PAGE_REFERENCE_BYTES + USED_KEY_LENGTH_BYTES + KEY_BYTES
-
-    def __init__(self, key=None, before=None, after=None, data: bytes=None):
+    def __init__(self, tree_conf: TreeConf, key=None, before=None, after=None,
+                 data: bytes=None):
+        self._tree_conf = tree_conf
+        self.length = (
+            2 * PAGE_REFERENCE_BYTES +
+            USED_KEY_LENGTH_BYTES +
+            self._tree_conf.key_size
+        )
         self.key = key
         self.before = before
         self.after = after
@@ -107,12 +117,12 @@ class Reference(Entry):
         used_key_length = int.from_bytes(
             data[end_before:end_used_key_length], ENDIAN
         )
-        assert 0 <= used_key_length <= KEY_BYTES
+        assert 0 <= used_key_length <= self._tree_conf.key_size
 
         end_key = end_used_key_length + used_key_length
         self.key = int.from_bytes(data[end_used_key_length:end_key], ENDIAN)
 
-        start_after = end_used_key_length + KEY_BYTES
+        start_after = end_used_key_length + self._tree_conf.key_size
         end_after = end_key + PAGE_REFERENCE_BYTES
         self.after = int.from_bytes(data[start_after:end_after], ENDIAN)
 
@@ -121,14 +131,14 @@ class Reference(Entry):
         assert isinstance(self.key, int)
         assert isinstance(self.after, int)
 
-        key_as_bytes = self.key.to_bytes(KEY_BYTES, ENDIAN)
+        key_as_bytes = self.key.to_bytes(self._tree_conf.key_size, ENDIAN)
         used_key_length = len(key_as_bytes)
 
         data = (
             self.before.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN) +
             used_key_length.to_bytes(USED_VALUE_LENGTH_BYTES, ENDIAN) +
             key_as_bytes +
-            bytes(KEY_BYTES - used_key_length) +
+            bytes(self._tree_conf.key_size - used_key_length) +
             self.after.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN)
         )
         return data
