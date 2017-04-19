@@ -135,6 +135,13 @@ class Node(abc.ABC):
             self.__class__.__name__, self.page, len(self.entries)
         )
 
+    def __eq__(self, other):
+        return (
+            self.__class__ is other.__class__ and
+            self.page == other.page and
+            self.entries == other.entries
+        )
+
 
 class RecordNode(Node):
 

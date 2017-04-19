@@ -1,6 +1,4 @@
-import io
 import itertools
-import mmap
 import os
 
 import pytest
@@ -8,36 +6,35 @@ import pytest
 from bplustree.const import ENDIAN, TreeConf
 from bplustree.node import Node, RootNode
 from bplustree.tree import BPlusTree
+from bplustree.memory import Memory, FileMemory
+
+filename = '/tmp/bplustree-testfile.index'
+
+
+@pytest.fixture
+def clean_file():
+    if os.path.isfile(filename):
+        os.unlink(filename)
+    yield
+    if os.path.isfile(filename):
+        os.unlink(filename)
 
 
 def test_create_in_memory():
     b = BPlusTree()
-    assert isinstance(b._mm, mmap.mmap)
+    assert isinstance(b._mem, Memory)
     b.close()
 
 
-def test_create_and_load_file():
-    filename = '/tmp/testfile.db'
-
-    if os.path.isfile(filename):
-        os.unlink(filename)
-
+def test_create_and_load_file(clean_file):
     b = BPlusTree(filename=filename)
-    assert isinstance(b._mm, io.FileIO)
+    assert isinstance(b._mem, FileMemory)
     b.insert(5, b'foo')
     b.close()
 
     b = BPlusTree(filename=filename)
-    assert isinstance(b._mm, io.FileIO)
+    assert isinstance(b._mem, FileMemory)
     assert b.get(5) == b'foo'
-    b.close()
-
-
-def test_write_read_page():
-    b = BPlusTree()
-    expected = b'abcdefgh' * int(4096 / 8)
-    b._write_page(1, expected)
-    assert b._read_page(1) == expected
     b.close()
 
 
@@ -74,7 +71,7 @@ orders = [3, 4, 50]
 page_sizes = [4096, 8192]
 key_sizes = [4, 16]
 values_sizes = [4, 16]
-file_names = [None, '/tmp/testfile.index']
+file_names = [None, filename]
 matrix = itertools.product(iterators, orders, page_sizes,
                            key_sizes, values_sizes, file_names)
 
@@ -82,11 +79,8 @@ matrix = itertools.product(iterators, orders, page_sizes,
 @pytest.mark.parametrize('iterator,order,page_size,k_size,v_size,filename',
                          matrix)
 def test_insert_split_in_tree(iterator, order, page_size, k_size, v_size,
-                              filename):
+                              filename, clean_file):
     inserted = set()
-
-    if filename and os.path.isfile(filename):
-        os.unlink(filename)
 
     b = BPlusTree(filename=filename, order=order, page_size=page_size,
                   key_size=k_size, value_size=v_size)
