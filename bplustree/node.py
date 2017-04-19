@@ -89,9 +89,7 @@ class Node(abc.ABC):
         return self.entries.pop(0)
 
     def insert_entry(self, entry: Entry):
-        assert isinstance(entry, self._entry_class)
-        self.entries.append(entry)
-        self.entries.sort()
+        bisect.insort(self.entries, entry)
 
     def get_entry(self, key):
         entry = self._entry_class(

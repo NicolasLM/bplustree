@@ -1,6 +1,8 @@
 import io
 from typing import Union
 
+import cachetools
+
 from .node import Node
 from .const import ENDIAN, PAGE_REFERENCE_BYTES, OTHERS_BYTES, TreeConf
 
@@ -43,10 +45,12 @@ class Memory:
 
 class FileMemory(Memory):
 
-    def __init__(self, fd: io.FileIO, tree_conf: TreeConf):
+    def __init__(self, fd: io.FileIO, tree_conf: TreeConf,
+                 cache_size: int=1000):
         super().__init__()
         self._fd = fd
         self._tree_conf = tree_conf
+        self._cache = cachetools.LRUCache(cache_size)
 
         # Get the next available page
         self._fd.seek(0, io.SEEK_END)
@@ -54,12 +58,16 @@ class FileMemory(Memory):
         self._last_page = int(last_byte / self._tree_conf.page_size)
 
     def get_node(self, page: int):
-        data = self._read_page(page)
-        return Node.from_page_data(self._tree_conf, data=data, page=page)
+        try:
+            return self._cache[page]
+        except KeyError:
+            data = self._read_page(page)
+            return Node.from_page_data(self._tree_conf, data=data, page=page)
 
     def set_node(self, node: Node):
         data = node.dump()
         self._write_page(node.page, data)
+        self._cache[node.page] = node
 
     def get_metadata(self) -> tuple:
         try:

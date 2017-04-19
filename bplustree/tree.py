@@ -13,7 +13,7 @@ class BPlusTree:
 
     def __init__(self, filename: Optional[str]=None,
                  page_size: int= 4096, order: int=4, key_size: int=16,
-                 value_size: int=16):
+                 value_size: int=16, cache_size: int=1000):
         self._tree_conf = TreeConf(page_size, order, key_size, value_size)
         self._create_partials()
         if not filename:
@@ -21,11 +21,11 @@ class BPlusTree:
             self._initialize_empty_tree()
         elif not os.path.exists(filename):
             self._mem = FileMemory(open(filename, mode='x+b', buffering=0),
-                                   self._tree_conf)
+                                   self._tree_conf, cache_size=cache_size)
             self._initialize_empty_tree()
         else:
             self._mem = FileMemory(open(filename, mode='r+b', buffering=0),
-                                   self._tree_conf)
+                                   self._tree_conf, cache_size=cache_size)
             self._root_node_page, self._tree_conf = self._mem.get_metadata()
 
     def _initialize_empty_tree(self):
