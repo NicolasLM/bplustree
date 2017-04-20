@@ -1,10 +1,38 @@
+import enum
 import io
-from typing import Union
+import os
+from typing import Union, Tuple
 
 import cachetools
 
 from .node import Node
 from .const import ENDIAN, PAGE_REFERENCE_BYTES, OTHERS_BYTES, TreeConf
+
+
+class Fsync(enum.Enum):
+    ALWAYS = 1
+    NEVER = 2
+
+
+def open_file_in_dir(path: str) -> Tuple[io.FileIO, int]:
+    """Open a file and its directory.
+
+    The file is opened in binary mode and created if it does not exist.
+    Both file descriptors must be closed after use to prevent them from
+    leaking.
+    """
+    directory = os.path.dirname(path)
+    if not os.path.isdir(directory):
+        raise ValueError('No directory {}'.format(directory))
+
+    if not os.path.exists(path):
+        file_fd = open(path, mode='x+b', buffering=0)
+    else:
+        file_fd = open(path, mode='r+b', buffering=0)
+
+    dir_fd = os.open(directory, os.O_RDONLY)
+
+    return file_fd, dir_fd
 
 
 class Memory:
@@ -45,12 +73,13 @@ class Memory:
 
 class FileMemory(Memory):
 
-    def __init__(self, fd: io.FileIO, tree_conf: TreeConf,
-                 cache_size: int=1000):
+    def __init__(self, filename: str, tree_conf: TreeConf,
+                 cache_size: int=1000, fsync: Fsync=Fsync.ALWAYS):
         super().__init__()
-        self._fd = fd
+        self._fd, self._dir_fd = open_file_in_dir(filename)
         self._tree_conf = tree_conf
         self._cache = cachetools.LRUCache(cache_size)
+        self.fsync = fsync
 
         # Get the next available page
         self._fd.seek(0, io.SEEK_END)
@@ -111,8 +140,8 @@ class FileMemory(Memory):
         self._write_page(0, data)
 
     def close(self):
-        self._fd.flush()
         self._fd.close()
+        os.close(self._dir_fd)
 
     def _read_page(self, page: int) -> bytes:
         start = page * self._tree_conf.page_size
@@ -131,3 +160,6 @@ class FileMemory(Memory):
         assert len(data) == self._tree_conf.page_size
         self._fd.seek(page * self._tree_conf.page_size)
         self._fd.write(data)
+        if self.fsync == Fsync.ALWAYS:
+            os.fsync(self._fd.fileno())
+            os.fsync(self._dir_fd)

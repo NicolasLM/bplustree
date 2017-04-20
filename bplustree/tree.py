@@ -1,11 +1,10 @@
 from functools import partial
-import os.path
 from typing import Optional, Union
 
 from . import utils
 from .const import TreeConf
 from .entry import Record, Reference
-from .memory import Memory, FileMemory
+from .memory import Memory, FileMemory, Fsync
 from .node import Node, LonelyRootNode, RootNode, InternalNode, LeafNode
 
 
@@ -13,20 +12,24 @@ class BPlusTree:
 
     def __init__(self, filename: Optional[str]=None,
                  page_size: int= 4096, order: int=4, key_size: int=16,
-                 value_size: int=16, cache_size: int=1000):
+                 value_size: int=16, cache_size: int=1000,
+                 fsync: Fsync=Fsync.ALWAYS):
         self._tree_conf = TreeConf(page_size, order, key_size, value_size)
         self._create_partials()
         if not filename:
             self._mem = Memory()
             self._initialize_empty_tree()
-        elif not os.path.exists(filename):
-            self._mem = FileMemory(open(filename, mode='x+b', buffering=0),
-                                   self._tree_conf, cache_size=cache_size)
-            self._initialize_empty_tree()
         else:
-            self._mem = FileMemory(open(filename, mode='r+b', buffering=0),
-                                   self._tree_conf, cache_size=cache_size)
-            self._root_node_page, self._tree_conf = self._mem.get_metadata()
+            self._mem = FileMemory(
+                filename, self._tree_conf, cache_size=cache_size,
+                fsync=fsync
+            )
+            try:
+                metadata = self._mem.get_metadata()
+            except ValueError:
+                self._initialize_empty_tree()
+            else:
+                self._root_node_page, self._tree_conf = metadata
 
     def _initialize_empty_tree(self):
         self._root_node_page = self._mem.next_available_page

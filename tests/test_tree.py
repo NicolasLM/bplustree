@@ -6,7 +6,7 @@ import pytest
 from bplustree.const import ENDIAN, TreeConf
 from bplustree.node import Node, RootNode
 from bplustree.tree import BPlusTree
-from bplustree.memory import Memory, FileMemory
+from bplustree.memory import Memory, FileMemory, Fsync
 
 filename = '/tmp/bplustree-testfile.index'
 
@@ -83,7 +83,7 @@ def test_insert_split_in_tree(iterator, order, page_size, k_size, v_size,
     inserted = set()
 
     b = BPlusTree(filename=filename, order=order, page_size=page_size,
-                  key_size=k_size, value_size=v_size)
+                  key_size=k_size, value_size=v_size, fsync=Fsync.NEVER)
 
     for i in iterator:
         b.insert(i, str(i).encode())
