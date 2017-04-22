@@ -55,10 +55,12 @@ def test_partial_constructors():
     b.close()
 
 
-def test_insert_get_record_in_tree():
+def test_get_tree():
     b = BPlusTree()
     b.insert(1, b'foo')
     assert b.get(1) == b'foo'
+    assert b.get(2) is None
+    assert b.get(2, 'bar') == 'bar'
     b.close()
 
 

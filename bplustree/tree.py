@@ -36,11 +36,15 @@ class BPlusTree:
     def close(self):
         self._mem.close()
 
-    def get(self, key) -> bytes:
+    def get(self, key, default=None) -> bytes:
         node = self._search_in_tree(key, self._root_node)
-        record = node.get_entry(key)
-        assert isinstance(record.value, bytes)
-        return record.value
+        try:
+            record = node.get_entry(key)
+        except ValueError:
+            return default
+        else:
+            assert isinstance(record.value, bytes)
+            return record.value
 
     def __getitem__(self, item):
         if isinstance(item, slice):
