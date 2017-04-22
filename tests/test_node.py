@@ -1,6 +1,6 @@
 import pytest
 
-from bplustree.const import TreeConf
+from bplustree.const import TreeConf, ENDIAN
 from bplustree.entry import Record, Reference
 from bplustree.node import (Node, LonelyRootNode, RootNode, InternalNode,
                             LeafNode)
@@ -40,7 +40,7 @@ def test_empty_node_serialization(klass):
 
 
 def test_leaf_node_serialization():
-    n1 = LeafNode(tree_conf)
+    n1 = LeafNode(tree_conf, next_page=66)
     n1.insert_entry(Record(tree_conf, 43, b'43'))
     n1.insert_entry(Record(tree_conf, 42, b'42'))
     assert n1.entries == [Record(tree_conf, 42, b'42'),
@@ -49,6 +49,15 @@ def test_leaf_node_serialization():
 
     n2 = LeafNode(tree_conf, data=data)
     assert n1.entries == n2.entries
+    assert n1.next_page == n2.next_page == 66
+
+
+def test_leaf_node_serialization_no_next_page():
+    n1 = LeafNode(tree_conf)
+    data = n1.dump()
+
+    n2 = LeafNode(tree_conf, data=data)
+    assert n1.next_page is n2.next_page is None
 
 
 def test_root_node_serialization():
@@ -61,3 +70,13 @@ def test_root_node_serialization():
 
     n2 = RootNode(tree_conf, data=data)
     assert n1.entries == n2.entries
+    assert n1.next_page is n2.next_page is None
+
+
+def test_get_node_from_page_data():
+    data = (2).to_bytes(1, ENDIAN) + bytes(4096 - 1)
+    tree_conf = TreeConf(4096, 7, 16, 16)
+    assert isinstance(
+        Node.from_page_data(tree_conf, data, 4),
+        RootNode
+    )

@@ -3,10 +3,9 @@ import os
 
 import pytest
 
-from bplustree.const import ENDIAN, TreeConf
-from bplustree.node import Node, RootNode
-from bplustree.tree import BPlusTree
 from bplustree.memory import Memory, FileMemory, Fsync
+from bplustree.node import LonelyRootNode, LeafNode
+from bplustree.tree import BPlusTree
 
 filename = '/tmp/bplustree-testfile.index'
 
@@ -62,6 +61,95 @@ def test_insert_get_record_in_tree():
     assert b.get(1) == b'foo'
     b.close()
 
+
+def test_iter_tree():
+    b = BPlusTree(order=3)
+
+    # Empty tree
+    iter = b.__iter__()
+    with pytest.raises(StopIteration):
+        next(iter)
+
+    # Insert in reverse...
+    for i in range(1000, 0, -1):
+        b.insert(i, str(i).encode())
+    # ...iter in order
+    previous = 0
+    for i in b:
+        assert i == previous + 1
+        previous += 1
+
+    b.close()
+
+
+def test_iter_slice():
+    b = BPlusTree(order=3)
+
+    with pytest.raises(ValueError):
+        next(b._iter_slice(slice(None, None, -1)))
+
+    with pytest.raises(ValueError):
+        next(b._iter_slice(slice(10, 0, None)))
+
+    # Contains from 0 to 9 included
+    for i in range(10):
+        b.insert(i, str(i).encode())
+
+    iter = b._iter_slice(slice(None, 2))
+    assert next(iter) == 0
+    assert next(iter) == 1
+    with pytest.raises(StopIteration):
+        next(iter)
+
+    iter = b._iter_slice(slice(5, 7))
+    assert next(iter) == 5
+    assert next(iter) == 6
+    with pytest.raises(StopIteration):
+        next(iter)
+
+    iter = b._iter_slice(slice(8, 9))
+    assert next(iter) == 8
+    with pytest.raises(StopIteration):
+        next(iter)
+
+    iter = b._iter_slice(slice(9, 12))
+    assert next(iter) == 9
+    with pytest.raises(StopIteration):
+        next(iter)
+
+    iter = b._iter_slice(slice(15, 17))
+    with pytest.raises(StopIteration):
+        next(iter)
+
+    iter = b._iter_slice(slice(-2, 17))
+    assert next(iter) == 0
+
+    b.close()
+
+    # Contains from 10, 20, 30 .. 200
+    b = BPlusTree(order=5)
+    for i in range(10, 201, 10):
+        b.insert(i, str(i).encode())
+
+    iter = b._iter_slice(slice(65, 85))
+    assert next(iter) == 70
+    assert next(iter) == 80
+    with pytest.raises(StopIteration):
+        next(iter)
+
+    b.close()
+
+
+def test_left_record_node_in_tree():
+    b = BPlusTree(order=3)
+    assert b._left_record_node == b._root_node
+    assert isinstance(b._left_record_node, LonelyRootNode)
+    b.insert(1, b'1')
+    b.insert(2, b'2')
+    b.insert(2, b'2')
+    assert isinstance(b._left_record_node, LeafNode)
+    b.close()
+
 iterators = [
     range(0, 1000, 1),
     range(1000, 0, -1),
@@ -99,12 +187,3 @@ def test_insert_split_in_tree(iterator, order, page_size, k_size, v_size,
         assert b.get(x) == str(x).encode()
 
     b.close()
-
-
-def test_get_node_from_page_data():
-    data = (2).to_bytes(1, ENDIAN) + bytes(4096 - 1)
-    tree_conf = TreeConf(4096, 7, 16, 16)
-    assert isinstance(
-        Node.from_page_data(tree_conf, data, 4),
-        RootNode
-    )

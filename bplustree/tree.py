@@ -10,6 +10,8 @@ from .node import Node, LonelyRootNode, RootNode, InternalNode, LeafNode
 
 class BPlusTree:
 
+    # ######################### Public API ################################
+
     def __init__(self, filename: Optional[str]=None,
                  page_size: int= 4096, order: int=4, key_size: int=16,
                  value_size: int=16, cache_size: int=1000,
@@ -31,6 +33,37 @@ class BPlusTree:
             else:
                 self._root_node_page, self._tree_conf = metadata
 
+    def close(self):
+        self._mem.close()
+
+    def get(self, key) -> bytes:
+        node = self._search_in_tree(key, self._root_node)
+        record = node.get_entry(key)
+        assert isinstance(record.value, bytes)
+        return record.value
+
+    def __getitem__(self, item):
+        if isinstance(item, slice):
+            raise NotImplemented()
+        return self.get(item)
+
+    def __iter__(self):
+        return self._iter_slice(slice(None))
+
+    def insert(self, key, value: bytes):
+        if not isinstance(value, bytes):
+            ValueError('Values must be bytes objects')
+
+        node = self._search_in_tree(key, self._root_node)
+        if node.can_add_entry:
+            node.insert_entry(self.Record(key, value))
+            self._mem.set_node(node)
+        else:
+            node.insert_entry(self.Record(key, value))
+            self._split_leaf(node)
+
+    # ####################### Implementation ##############################
+
     def _initialize_empty_tree(self):
         self._root_node_page = self._mem.next_available_page
         self._mem.set_node(self.LonelyRootNode(page=self._root_node_page))
@@ -44,32 +77,46 @@ class BPlusTree:
         self.Record = partial(Record, self._tree_conf)
         self.Reference = partial(Reference, self._tree_conf)
 
-    def close(self):
-        self._mem.close()
-
     @property
     def _root_node(self) -> Union['LonelyRootNode', 'RootNode']:
         root_node = self._mem.get_node(self._root_node_page)
         assert isinstance(root_node, (LonelyRootNode, RootNode))
         return root_node
 
-    def get(self, key) -> bytes:
-        node = self._search_in_tree(key, self._root_node)
-        record = node.get_entry(key)
-        assert isinstance(record.value, bytes)
-        return record.value
+    @property
+    def _left_record_node(self) -> Union['LonelyRootNode', 'LeafNode']:
+        node = self._root_node
+        while not isinstance(node, (LonelyRootNode, LeafNode)):
+            node = self._mem.get_node(node.smallest_entry.before)
+        return node
 
-    def insert(self, key, value: bytes):
-        if not isinstance(value, bytes):
-            ValueError('Values must be bytes objects')
+    def _iter_slice(self, slice_: slice):
+        if slice_.step is not None:
+            raise ValueError('Cannot iterate with a custom step')
 
-        node = self._search_in_tree(key, self._root_node)
-        if node.can_add_entry:
-            node.insert_entry(self.Record(key, value))
-            self._mem.set_node(node)
+        if (slice_.start is not None and slice_.stop is not None
+                and slice_.start >= slice_.stop):
+            raise ValueError('Cannot iterate backwards')
+
+        if slice_.start is None:
+            node = self._left_record_node
         else:
-            node.insert_entry(self.Record(key, value))
-            self._split_leaf(node)
+            node = self._search_in_tree(slice_.start, self._root_node)
+
+        while True:
+            for entry in node.entries:
+                if slice_.start is not None and entry.key < slice_.start:
+                    continue
+
+                if slice_.stop is not None and entry.key >= slice_.stop:
+                    raise StopIteration()
+
+                yield entry.key
+
+            if node.next_page:
+                node = self._mem.get_node(node.next_page)
+            else:
+                raise StopIteration()
 
     def _search_in_tree(self, key, node) -> 'Node':
         if isinstance(node, (LonelyRootNode, LeafNode)):
@@ -97,7 +144,8 @@ class BPlusTree:
 
     def _split_leaf(self, old_node: 'Node'):
         parent = old_node.parent
-        new_node = self.LeafNode(page=self._mem.next_available_page)
+        new_node = self.LeafNode(page=self._mem.next_available_page,
+                                 next_page=old_node.next_page)
         new_entries = old_node.split_entries()
         new_node.entries = new_entries
         ref = self.Reference(new_node.smallest_key,
@@ -113,6 +161,8 @@ class BPlusTree:
         else:
             parent.insert_entry(ref)
             self._split_parent(parent)
+
+        old_node.next_page = new_node.page
 
         self._mem.set_node(old_node)
         self._mem.set_node(new_node)

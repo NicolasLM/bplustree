@@ -3,7 +3,7 @@ import bisect
 import math
 from typing import Optional
 
-from .const import ENDIAN, NODE_TYPE_BYTES, USED_PAGE_LENGTH_BYTES, TreeConf
+from .const import ENDIAN, NODE_TYPE_BYTES, USED_PAGE_LENGTH_BYTES, PAGE_REFERENCE_BYTES, TreeConf
 from .entry import Entry, Record, Reference
 
 
@@ -16,20 +16,28 @@ class Node(abc.ABC):
     _entry_class = None
 
     def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
-                 page: int=None, parent: 'Node'=None):
+                 page: int=None, parent: 'Node'=None, next_page: int=None):
         self._tree_conf = tree_conf
         self.entries = list()
         self.page = page
         self.parent = parent
+        self.next_page = next_page
         if data:
             self.load(data)
 
     def load(self, data: bytes):
         assert len(data) == self._tree_conf.page_size
-        end_header = NODE_TYPE_BYTES + USED_PAGE_LENGTH_BYTES
+        end_used_page_length = NODE_TYPE_BYTES + USED_PAGE_LENGTH_BYTES
         used_page_length = int.from_bytes(
-            data[NODE_TYPE_BYTES:end_header], ENDIAN
+            data[NODE_TYPE_BYTES:end_used_page_length], ENDIAN
         )
+        end_header = end_used_page_length + PAGE_REFERENCE_BYTES
+        self.next_page = int.from_bytes(
+            data[end_used_page_length:end_header], ENDIAN
+        )
+        if self.next_page == 0:
+            self.next_page = None
+
         entry_length = self._entry_class(self._tree_conf).length
         for start_offset in range(end_header, used_page_length, entry_length):
             entry_data = data[start_offset:start_offset+entry_length]
@@ -43,8 +51,12 @@ class Node(abc.ABC):
 
         used_page_length = len(data) + 4
         assert 0 <= used_page_length < self._tree_conf.page_size
-        header = (self._node_type_int.to_bytes(1, ENDIAN) +
-                  used_page_length.to_bytes(3, ENDIAN))
+        next_page = 0 if self.next_page is None else self.next_page
+        header = (
+            self._node_type_int.to_bytes(1, ENDIAN) +
+            used_page_length.to_bytes(3, ENDIAN) +
+            next_page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN)
+        )
 
         data = bytearray(header) + data
 
@@ -144,9 +156,9 @@ class Node(abc.ABC):
 class RecordNode(Node):
 
     def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
-                 page: int=None, parent: 'Node'=None):
+                 page: int=None, parent: 'Node'=None, next_page: int=None):
         self._entry_class = Record
-        super().__init__(tree_conf, data, page, parent)
+        super().__init__(tree_conf, data, page, parent, next_page)
 
     @property
     def num_children(self) -> int:
@@ -176,11 +188,11 @@ class LeafNode(RecordNode):
     """Node that holds the actual records within the tree."""
 
     def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
-                 page: int=None, parent: 'Node'=None):
+                 page: int=None, parent: 'Node'=None, next_page: int=None):
         self._node_type_int = 4
         self._min_children = math.ceil(tree_conf.order / 2) - 1
         self._max_children = tree_conf.order - 1
-        super().__init__(tree_conf, data, page, parent)
+        super().__init__(tree_conf, data, page, parent, next_page)
 
 
 class ReferenceNode(Node):
