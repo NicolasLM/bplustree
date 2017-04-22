@@ -20,8 +20,8 @@ tree_conf = TreeConf(4096, 7, 16, 16)
 ])
 def test_node_limit_children(klass, order, min_children, max_children):
     node = klass(TreeConf(4096, order, 16, 16))
-    assert node._min_children == min_children
-    assert node._max_children == max_children
+    assert node.min_children == min_children
+    assert node.max_children == max_children
 
 
 @pytest.mark.parametrize('klass', [

@@ -40,7 +40,7 @@ class Memory:
     def __init__(self):
         self._nodes = dict()
         self._metadata = dict()
-        self._last_page = 0
+        self.last_page = 0
 
     def get_node(self, page: int):
         try:
@@ -64,8 +64,8 @@ class Memory:
 
     @property
     def next_available_page(self) -> int:
-        self._last_page += 1
-        return self._last_page
+        self.last_page += 1
+        return self.last_page
 
     def close(self):
         pass
@@ -84,7 +84,7 @@ class FileMemory(Memory):
         # Get the next available page
         self._fd.seek(0, io.SEEK_END)
         last_byte = self._fd.tell()
-        self._last_page = int(last_byte / self._tree_conf.page_size)
+        self.last_page = int(last_byte / self._tree_conf.page_size)
 
     def get_node(self, page: int):
         try:

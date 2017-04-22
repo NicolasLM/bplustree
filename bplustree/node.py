@@ -3,7 +3,8 @@ import bisect
 import math
 from typing import Optional
 
-from .const import ENDIAN, NODE_TYPE_BYTES, USED_PAGE_LENGTH_BYTES, PAGE_REFERENCE_BYTES, TreeConf
+from .const import (ENDIAN, NODE_TYPE_BYTES, USED_PAGE_LENGTH_BYTES,
+                    PAGE_REFERENCE_BYTES, TreeConf)
 from .entry import Entry, Record, Reference
 
 
@@ -11,8 +12,8 @@ class Node(abc.ABC):
 
     # Attributes to redefine in inherited classes
     _node_type_int = 0
-    _max_children = 0
-    _min_children = 0
+    max_children = 0
+    min_children = 0
     _entry_class = None
 
     def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
@@ -69,11 +70,11 @@ class Node(abc.ABC):
 
     @property
     def can_add_entry(self) -> bool:
-        return self.num_children < self._max_children
+        return self.num_children < self.max_children
 
     @property
     def can_delete_entry(self) -> bool:
-        return self.num_children > self._min_children
+        return self.num_children > self.min_children
 
     @property
     def smallest_key(self):
@@ -174,8 +175,8 @@ class LonelyRootNode(RecordNode):
     def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None):
         self._node_type_int = 1
-        self._min_children = 0
-        self._max_children = tree_conf.order - 1
+        self.min_children = 0
+        self.max_children = tree_conf.order - 1
         super().__init__(tree_conf, data, page, parent)
 
     def convert_to_leaf(self):
@@ -190,8 +191,8 @@ class LeafNode(RecordNode):
     def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None, next_page: int=None):
         self._node_type_int = 4
-        self._min_children = math.ceil(tree_conf.order / 2) - 1
-        self._max_children = tree_conf.order - 1
+        self.min_children = math.ceil(tree_conf.order / 2) - 1
+        self.max_children = tree_conf.order - 1
         super().__init__(tree_conf, data, page, parent, next_page)
 
 
@@ -230,8 +231,8 @@ class RootNode(ReferenceNode):
     def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None):
         self._node_type_int = 2
-        self._min_children = 2
-        self._max_children = tree_conf.order
+        self.min_children = 2
+        self.max_children = tree_conf.order
         super().__init__(tree_conf, data, page, parent)
 
     def convert_to_internal(self):
@@ -246,6 +247,6 @@ class InternalNode(ReferenceNode):
     def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None):
         self._node_type_int = 3
-        self._min_children = math.ceil(tree_conf.order / 2)
-        self._max_children = tree_conf.order
+        self.min_children = math.ceil(tree_conf.order / 2)
+        self.max_children = tree_conf.order
         super().__init__(tree_conf, data, page, parent)

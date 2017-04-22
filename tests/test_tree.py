@@ -19,10 +19,15 @@ def clean_file():
         os.unlink(filename)
 
 
-def test_create_in_memory():
+@pytest.fixture
+def b():
     b = BPlusTree()
-    assert isinstance(b._mem, Memory)
+    yield b
     b.close()
+
+
+def test_create_in_memory(b):
+    assert isinstance(b._mem, Memory)
 
 
 def test_create_and_load_file(clean_file):
@@ -46,27 +51,53 @@ def test_initial_values():
     b.close()
 
 
-def test_partial_constructors():
-    b = BPlusTree()
+def test_partial_constructors(b):
     node = b.RootNode()
     record = b.Record()
     assert node._tree_conf == b._tree_conf
     assert record._tree_conf == b._tree_conf
-    b.close()
 
 
-def test_get_tree():
-    b = BPlusTree()
+def test_get_tree(b):
     b.insert(1, b'foo')
     assert b.get(1) == b'foo'
     assert b.get(2) is None
     assert b.get(2, 'bar') == 'bar'
+
+
+def test_contains_tree(b):
+    b.insert(1, b'foo')
+    assert 1 in b
+    assert 2 not in b
+
+
+def test_len_tree(b):
+    assert len(b) == 0
+    b.insert(1, b'foo')
+    assert len(b) == 1
+    for i in range(2, 101):
+        b.insert(i, str(i).encode())
+    assert len(b) == 100
+
+
+def test_length_hint_tree():
+    b = BPlusTree(order=100)
+    assert b.__length_hint__() == 49
+    b.insert(1, b'foo')
+    assert b.__length_hint__() == 49
+    for i in range(2, 10001):
+        b.insert(i, str(i).encode())
+    assert b.__length_hint__() == 7242
     b.close()
 
 
-def test_iter_tree():
-    b = BPlusTree(order=3)
+def test_bool_tree(b):
+    assert not b
+    b.insert(1, b'foo')
+    assert b
 
+
+def test_iter_tree(b):
     # Empty tree
     iter = b.__iter__()
     with pytest.raises(StopIteration):
@@ -81,12 +112,8 @@ def test_iter_tree():
         assert i == previous + 1
         previous += 1
 
-    b.close()
 
-
-def test_iter_slice():
-    b = BPlusTree(order=3)
-
+def test_iter_slice(b):
     with pytest.raises(ValueError):
         next(b._iter_slice(slice(None, None, -1)))
 
@@ -126,10 +153,8 @@ def test_iter_slice():
     iter = b._iter_slice(slice(-2, 17))
     assert next(iter) == 0
 
-    b.close()
-
     # Contains from 10, 20, 30 .. 200
-    b = BPlusTree(order=5)
+    b2 = BPlusTree(order=5)
     for i in range(10, 201, 10):
         b.insert(i, str(i).encode())
 
@@ -139,7 +164,7 @@ def test_iter_slice():
     with pytest.raises(StopIteration):
         next(iter)
 
-    b.close()
+    b2.close()
 
 
 def test_left_record_node_in_tree():

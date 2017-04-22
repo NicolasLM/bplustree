@@ -16,6 +16,7 @@ class BPlusTree:
                  page_size: int= 4096, order: int=4, key_size: int=16,
                  value_size: int=16, cache_size: int=1000,
                  fsync: Fsync=Fsync.ALWAYS):
+        self._filename = filename
         self._tree_conf = TreeConf(page_size, order, key_size, value_size)
         self._create_partials()
         if not filename:
@@ -36,24 +37,6 @@ class BPlusTree:
     def close(self):
         self._mem.close()
 
-    def get(self, key, default=None) -> bytes:
-        node = self._search_in_tree(key, self._root_node)
-        try:
-            record = node.get_entry(key)
-        except ValueError:
-            return default
-        else:
-            assert isinstance(record.value, bytes)
-            return record.value
-
-    def __getitem__(self, item):
-        if isinstance(item, slice):
-            raise NotImplemented()
-        return self.get(item)
-
-    def __iter__(self):
-        return self._iter_slice(slice(None))
-
     def insert(self, key, value: bytes):
         if not isinstance(value, bytes):
             ValueError('Values must be bytes objects')
@@ -65,6 +48,61 @@ class BPlusTree:
         else:
             node.insert_entry(self.Record(key, value))
             self._split_leaf(node)
+
+    def get(self, key, default=None) -> bytes:
+        node = self._search_in_tree(key, self._root_node)
+        try:
+            record = node.get_entry(key)
+        except ValueError:
+            return default
+        else:
+            assert isinstance(record.value, bytes)
+            return record.value
+
+    def __contains__(self, item):
+        o = object()
+        return False if self.get(item, default=o) is o else True
+
+    def __getitem__(self, item):
+        if isinstance(item, slice):
+            raise NotImplemented()
+        return self.get(item)
+
+    def __len__(self):
+        node = self._left_record_node
+        rv = 0
+        while True:
+            rv += len(node.entries)
+            if not node.next_page:
+                return rv
+            node = self._mem.get_node(node.next_page)
+
+    def __length_hint__(self):
+        node = self._root_node
+        if isinstance(node, LonelyRootNode):
+            # Assume that the lonely root node is half full
+            return node.max_children // 2
+        # Assume that there are no holes in pages
+        last_page = self._mem.last_page
+        # Assume that 70% of nodes in a tree carry values
+        num_leaf_nodes = int(last_page * 0.70)
+        # Assume that every leaf node is half full
+        num_records_per_leaf_node = int(
+            (node.max_children + node.min_children) / 2
+        )
+        return num_leaf_nodes * num_records_per_leaf_node
+
+    def __iter__(self):
+        return self._iter_slice(slice(None))
+
+    def __bool__(self):
+        for _ in self:
+            return True
+        return False
+
+    def __repr__(self):
+        backend = (self._filename if self._filename else 'In memory')
+        return '<BPlusTree: {} {}>'.format(backend, self._tree_conf)
 
     # ####################### Implementation ##############################
 
