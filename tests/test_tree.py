@@ -97,7 +97,7 @@ def test_bool_tree(b):
     assert b
 
 
-def test_iter_tree(b):
+def test_iter_keys_values_items_tree(b):
     # Empty tree
     iter = b.__iter__()
     with pytest.raises(StopIteration):
@@ -110,6 +110,25 @@ def test_iter_tree(b):
     previous = 0
     for i in b:
         assert i == previous + 1
+        previous += 1
+
+    # Test .keys()
+    previous = 0
+    for i in b.keys():
+        assert i == previous + 1
+        previous += 1
+
+    # Test .values()
+    previous = 0
+    for i in b.values():
+        assert int(i.decode()) == previous + 1
+        previous += 1
+
+    # Test .items()
+    previous = 0
+    for k, v in b.items():
+        expected = previous + 1
+        assert (k, int(v.decode())) == (expected, expected)
         previous += 1
 
 
@@ -125,24 +144,24 @@ def test_iter_slice(b):
         b.insert(i, str(i).encode())
 
     iter = b._iter_slice(slice(None, 2))
-    assert next(iter) == 0
-    assert next(iter) == 1
+    assert next(iter).key == 0
+    assert next(iter).key == 1
     with pytest.raises(StopIteration):
         next(iter)
 
     iter = b._iter_slice(slice(5, 7))
-    assert next(iter) == 5
-    assert next(iter) == 6
+    assert next(iter).key == 5
+    assert next(iter).key == 6
     with pytest.raises(StopIteration):
         next(iter)
 
     iter = b._iter_slice(slice(8, 9))
-    assert next(iter) == 8
+    assert next(iter).key == 8
     with pytest.raises(StopIteration):
         next(iter)
 
     iter = b._iter_slice(slice(9, 12))
-    assert next(iter) == 9
+    assert next(iter).key == 9
     with pytest.raises(StopIteration):
         next(iter)
 
@@ -151,7 +170,7 @@ def test_iter_slice(b):
         next(iter)
 
     iter = b._iter_slice(slice(-2, 17))
-    assert next(iter) == 0
+    assert next(iter).key == 0
 
     # Contains from 10, 20, 30 .. 200
     b2 = BPlusTree(order=5)
@@ -159,8 +178,8 @@ def test_iter_slice(b):
         b.insert(i, str(i).encode())
 
     iter = b._iter_slice(slice(65, 85))
-    assert next(iter) == 70
-    assert next(iter) == 80
+    assert next(iter).key == 70
+    assert next(iter).key == 80
     with pytest.raises(StopIteration):
         next(iter)
 

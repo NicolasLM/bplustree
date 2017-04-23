@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Optional, Union
+from typing import Optional, Union, Iterator
 
 from . import utils
 from .const import TreeConf
@@ -93,7 +93,18 @@ class BPlusTree:
         return num_leaf_nodes * num_records_per_leaf_node
 
     def __iter__(self):
-        return self._iter_slice(slice(None))
+        for record in self._iter_slice(slice(None)):
+            yield record.key
+
+    keys = __iter__
+
+    def items(self) -> Iterator[tuple]:
+        for record in self._iter_slice(slice(None)):
+            yield record.key, record.value
+
+    def values(self) -> Iterator[bytes]:
+        for record in self._iter_slice(slice(None)):
+            yield record.value
 
     def __bool__(self):
         for _ in self:
@@ -132,7 +143,7 @@ class BPlusTree:
             node = self._mem.get_node(node.smallest_entry.before)
         return node
 
-    def _iter_slice(self, slice_: slice):
+    def _iter_slice(self, slice_: slice) -> Iterator[Record]:
         if slice_.step is not None:
             raise ValueError('Cannot iterate with a custom step')
 
@@ -153,7 +164,7 @@ class BPlusTree:
                 if slice_.stop is not None and entry.key >= slice_.stop:
                     raise StopIteration()
 
-                yield entry.key
+                yield entry
 
             if node.next_page:
                 node = self._mem.get_node(node.next_page)
