@@ -80,3 +80,56 @@ def test_get_node_from_page_data():
         Node.from_page_data(tree_conf, data, 4),
         RootNode
     )
+
+
+def test_insert_find_get_remove_entries():
+    node = RootNode(tree_conf)
+
+    # Test empty _find_entry_index, get and remove
+    with pytest.raises(ValueError):
+        node._find_entry_index(42)
+    with pytest.raises(ValueError):
+        node.get_entry(42)
+    with pytest.raises(ValueError):
+        node.remove_entry(42)
+
+    # Test insert_entry
+    r42, r43 = Reference(tree_conf, 42, 1, 2), Reference(tree_conf, 43, 2, 3)
+    node.insert_entry(r43)
+    node.insert_entry(r42)
+    assert sorted(node.entries) == node.entries
+
+    # Test _find_entry_index
+    assert node._find_entry_index(42) == 0
+    assert node._find_entry_index(43) == 1
+
+    # Test _get_entry
+    assert node.get_entry(42) == r42
+    assert node.get_entry(43) == r43
+
+    node.remove_entry(43)
+    assert node.entries == [r42]
+    node.remove_entry(42)
+    assert node.entries == []
+
+
+def test_smallest_biggest():
+    node = RootNode(tree_conf)
+
+    with pytest.raises(IndexError):
+        node.pop_smallest()
+
+    r42, r43 = Reference(tree_conf, 42, 1, 2), Reference(tree_conf, 43, 2, 3)
+    node.insert_entry(r43)
+    node.insert_entry(r42)
+
+    # Smallest
+    assert node.smallest_entry == r42
+    assert node.smallest_key == 42
+
+    # Biggest
+    assert node.biggest_entry == r43
+    assert node.biggest_key == 43
+
+    assert node.pop_smallest() == r42
+    assert node.entries == [r43]

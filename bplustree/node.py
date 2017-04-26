@@ -104,14 +104,20 @@ class Node(abc.ABC):
     def insert_entry(self, entry: Entry):
         bisect.insort(self.entries, entry)
 
-    def get_entry(self, key):
+    def remove_entry(self, key):
+        self.entries.pop(self._find_entry_index(key))
+
+    def get_entry(self, key) -> Entry:
+        return self.entries[self._find_entry_index(key)]
+
+    def _find_entry_index(self, key) -> int:
         entry = self._entry_class(
             self._tree_conf,
             key=key  # Hack to compare and order
         )
         i = bisect.bisect_left(self.entries, entry)
         if i != len(self.entries) and self.entries[i] == entry:
-            return self.entries[i]
+            return i
         raise ValueError('No entry for key {}'.format(key))
 
     def split_entries(self) -> list:
