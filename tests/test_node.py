@@ -138,5 +138,10 @@ def test_smallest_biggest():
     assert node.biggest_entry == r43
     assert node.biggest_key == 43
 
+    # Pop
     assert node.pop_smallest() == r42
     assert node.entries == [r43]
+
+    node.insert_entry(r42)
+    assert node.pop_biggest() == r43
+    assert node.entries == [r42]

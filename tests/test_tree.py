@@ -74,6 +74,37 @@ def test_get_tree(b):
     assert b.get(2, 'bar') == 'bar'
 
 
+def test_remove_tree(b):
+    with pytest.raises(ValueError):
+        b.remove(1)
+    b.insert(1, b'foo')
+    del b[1]
+    assert b.get(1) is None
+
+
+def test_remove_rebalance():
+    b = BPlusTree(filename, order=3)
+    b.insert(1, b'1')
+    b.insert(2, b'2')
+    b.insert(3, b'3')
+
+    b.remove(3)
+    assert b._root_node_page == 3
+
+    b.remove(2)
+    raise RuntimeError()
+
+
+def test_remove_big_tree():
+    b = BPlusTree(filename, order=5)
+    for i in range(1, 100):
+        b.insert(i, str(i).encode())
+    for i in range(1, 100):
+        del b[i]
+        assert b.get(i) is None
+    b.close()
+
+
 def test_getitem_tree(b):
     b.insert(1, b'foo')
     b.insert(2, b'bar')

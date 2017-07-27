@@ -1,8 +1,9 @@
 import abc
 import bisect
 import math
-from typing import Optional
+from typing import Optional, Tuple
 
+from . import utils
 from .const import (ENDIAN, NODE_TYPE_BYTES, USED_PAGE_LENGTH_BYTES,
                     PAGE_REFERENCE_BYTES, TreeConf)
 from .entry import Entry, Record, Reference
@@ -103,6 +104,10 @@ class Node(metaclass=abc.ABCMeta):
         """Remove and return the smallest entry."""
         return self.entries.pop(0)
 
+    def pop_biggest(self) -> Entry:
+        """Remove and return the biggest entry."""
+        return self.entries.pop()
+
     def insert_entry(self, entry: Entry):
         bisect.insort(self.entries, entry)
 
@@ -113,6 +118,7 @@ class Node(metaclass=abc.ABCMeta):
         return self.entries[self._find_entry_index(key)]
 
     def _find_entry_index(self, key) -> int:
+        """Find the index of the entry which holds ``key`` in entries list."""
         entry = self._entry_class(
             self._tree_conf,
             key=key  # Hack to compare and order
@@ -132,6 +138,14 @@ class Node(metaclass=abc.ABCMeta):
         self.entries = self.entries[:len_entries//2]
         assert len(self.entries) + len(rv) == len_entries
         return rv
+
+    def merge_with(self, other: 'Node'):
+        assert isinstance(other, self.__class__)
+        if self.smallest_key < other.smallest_key:
+            self.entries = self.entries + other.entries
+        else:
+            self.entries = other.entries + self.entries
+        self.next_page = other.next_page
 
     @classmethod
     def from_page_data(cls, tree_conf: TreeConf, data: bytes,
@@ -222,6 +236,52 @@ class ReferenceNode(Node):
     @property
     def num_children(self) -> int:
         return len(self.entries) + 1 if self.entries else 0
+
+    def find_next_node_page(self, key) -> int:
+        """Find the page of the next node which should hold ``key``."""
+        if key < self.smallest_key:
+            return self.smallest_entry.before
+
+        elif self.biggest_key <= key:
+            return self.biggest_entry.after
+
+        else:
+            for ref_a, ref_b in utils.pairwise(self.entries):
+                if ref_a.key <= key < ref_b.key:
+                    return ref_a.after
+
+        assert False, "Unreachable"
+
+    def find_siblings(self, key) -> Tuple[Optional[int], Optional[int]]:
+        """Find the left and right siblings of a given key."""
+        if key < self.smallest_key:
+            return None, self.smallest_entry.after
+
+        elif self.biggest_key <= key:
+            return self.biggest_entry.before, None
+
+        else:
+            for ref_a, ref_b in utils.pairwise(self.entries):
+                if ref_a.key <= key < ref_b.key:
+                    return ref_a.before, ref_b.after
+
+        assert False, "Unreachable"
+
+    def get_split_key(self, left_key, right_key):
+        # This method is weird, it shouldn't exist
+        left_entry = self._entry_class(
+            self._tree_conf,
+            key=left_key  # Hack to compare and order
+        )
+        right_entry = self._entry_class(
+            self._tree_conf,
+            key=right_key  # Hack to compare and order
+        )
+        for index, entry in enumerate(self.entries):
+            if left_entry < entry < right_entry:
+                return entry.key
+
+        assert False, "Unreachable"
 
     def insert_entry(self, entry: 'Reference'):
         """Make sure that after of a reference matches before of the next one.

@@ -2,11 +2,12 @@ from functools import partial
 from logging import getLogger
 from typing import Optional, Union, Iterator
 
-from . import utils
 from .const import TreeConf
 from .entry import Record, Reference
 from .memory import FileMemory
-from .node import Node, LonelyRootNode, RootNode, InternalNode, LeafNode
+from .node import (
+    Node, LonelyRootNode, RootNode, InternalNode, LeafNode, RecordNode, ReferenceNode
+)
 from .serializer import Serializer, IntSerializer
 
 
@@ -104,6 +105,182 @@ class BPlusTree:
             else:
                 assert isinstance(record.value, bytes)
                 return record.value
+
+    def print(self):
+        from collections import defaultdict
+        visited = defaultdict(list)
+        self._visit_node(self._root_node, visited, level=0)
+
+        print()
+        for level, nodes in visited.items():
+
+            if level == 0:
+                padding = ' ' * 50
+            elif level == 1:
+                padding = ' ' * 17
+            else:
+                padding = ' ' * 5
+
+            to_print = ''
+            for node in nodes:
+                to_print += padding
+                to_print += '['
+                keys = [str(entry.key) for entry in node.entries]
+                to_print += ' '.join(keys)
+                to_print += ']'
+            print(to_print)
+        print()
+
+    def _visit_node(self, node, visited: dict, level: int):
+        if node not in visited[level]:
+            visited[level].append(node)
+
+        if isinstance(node, ReferenceNode):
+            for ref in node.entries:
+                self._visit_node(self._mem.get_node(ref.before), visited, level+1)
+                self._visit_node(self._mem.get_node(ref.after), visited, level+1)
+
+    def remove(self, key):
+        with self._mem.write_transaction:
+            node = self._search_in_tree(key, self._root_node)
+            self._delete_key(node, key)
+
+    def _delete_key(self, node, key, replace_key=True,
+                    replace_page_by_page: Optional[tuple]=None):
+
+            # When merging node into left sibling
+            if replace_page_by_page:
+                for entry in node.entries:
+                    if entry.before == replace_page_by_page[0]:
+                        entry.before = replace_page_by_page[1]
+                    if entry.after == replace_page_by_page[0]:
+                        entry.after = replace_page_by_page[1]
+
+            if node.can_delete_entry:
+                if key == node.smallest_key:
+                    node.remove_entry(key)
+                    replace_by_key = node.smallest_key
+                elif key == node.biggest_key:
+                    node.remove_entry(key)
+                    replace_by_key = node.biggest_key
+                else:
+                    node.remove_entry(key)
+                    replace_by_key = None
+                self._mem.set_node(node)
+
+                if replace_key and replace_by_key:
+                    self._replace_key_in_parents(
+                        node.parent, key, replace_by_key
+                    )
+
+                return
+
+            # Node is too empty to delete an entry
+            left_sib_page, right_sib_page = node.parent.find_siblings(key)
+            left_sibling, right_sibling = None, None
+            if left_sib_page:
+                left_sibling = self._mem.get_node(left_sib_page)
+            if right_sib_page:
+                right_sibling = self._mem.get_node(right_sib_page)
+
+            if left_sibling and left_sibling.can_delete_entry:
+                # borrow from sibling, take biggest entry
+                borrowed_entry = left_sibling.pop_biggest()
+                node.insert_entry(borrowed_entry)
+                node.remove_entry(key)
+                self._mem.set_node(node)
+                self._mem.set_node(left_sibling)
+                print('Replace', borrowed_entry.key, 'by', left_sibling.biggest_key)
+                self._replace_key_in_parents(
+                    node.parent, borrowed_entry.key, left_sibling.biggest_key
+                )
+                return
+
+            if right_sibling and right_sibling.can_delete_entry:
+                # borrow from sibling, take smallest
+                borrowed_entry = right_sibling.pop_smallest()
+                node.insert_entry(borrowed_entry)
+                node.remove_entry(key)
+                self._mem.set_node(node)
+                self._mem.set_node(right_sibling)
+                self._replace_key_in_parents(
+                    node.parent, borrowed_entry.key, right_sibling.smallest_key
+                )
+                self._replace_key_in_parents(
+                    node.parent, borrowed_entry.key, right_sibling.smallest_key
+                )
+                self._replace_key_in_parents(
+                    node.parent, key, borrowed_entry.key
+                )
+                return
+
+            if left_sibling:
+                # merge node into left sibling to prevent having to modify
+                # the next page of a leaf from another parent
+                if key == 52:
+                    print("foo")
+                if isinstance(node, LeafNode):
+                    left_sibling.merge_with(node)
+                    left_sibling.remove_entry(key)
+                    left_sibling.next_page = node.next_page
+                    self._mem.set_node(left_sibling)
+                    self._replace_key_in_parents(node.parent, key, left_sibling.biggest_key)
+                    self._delete_key(node.parent, left_sibling.biggest_key, replace_key=False, replace_page_by_page=(node.page, left_sibling.page))
+                else:
+                    removed_entry = node.get_entry(key)
+                    split_key = node.parent.get_split_key(left_sibling.biggest_key, key)
+                    split_key_entry = Reference(self._tree_conf, split_key,
+                                                before=left_sibling.biggest_entry.after,
+                                                after=removed_entry.before)
+                    left_sibling.merge_with(node)
+                    left_sibling.remove_entry(key)
+                    left_sibling.next_page = node.next_page
+                    left_sibling.insert_entry(split_key_entry)
+                    self._mem.set_node(node)
+                    self._delete_key(node.parent, split_key, replace_key=False)
+
+                return
+
+            if right_sibling:
+                # merge right sibling into node
+                if isinstance(node, LeafNode):
+                    node.merge_with(right_sibling)
+                    node.remove_entry(key)
+                    self._mem.set_node(node)
+                    self._replace_key_in_parents(node.parent, key, right_sibling.smallest_key)
+                    self._delete_key(node.parent, right_sibling.smallest_key, replace_key=False)
+                else:
+                    removed_entry = node.get_entry(key)
+                    split_key = node.parent.get_split_key(key, right_sibling.smallest_key)
+                    split_key_entry = Reference(self._tree_conf, split_key,
+                                                before=removed_entry.after,
+                                                after=right_sibling.smallest_entry.before)
+                    node.merge_with(right_sibling)
+                    node.remove_entry(key)
+                    node.insert_entry(split_key_entry)
+                    self._mem.set_node(node)
+                    self._delete_key(node.parent, split_key, replace_key=False,
+                                     replace_page_by_page=(right_sibling.page, node.page))
+                return
+
+            raise RuntimeError('Unreachable')
+
+    def _replace_key_in_parents(self, parent: ReferenceNode, key_to_remove,
+                                replace_by_key):
+        try:
+            entry = parent.get_entry(key_to_remove)
+        except ValueError:
+            pass
+        else:
+            entry.key = replace_by_key
+            self._mem.set_node(parent)
+
+        if parent.parent:
+            self._replace_key_in_parents(
+                parent.parent, key_to_remove, replace_by_key
+            )
+
+    __delitem__ = remove
 
     def __contains__(self, item):
         with self._mem.read_transaction:
@@ -247,24 +424,10 @@ class BPlusTree:
                 raise StopIteration()
 
     def _search_in_tree(self, key, node) -> 'Node':
-        if isinstance(node, (LonelyRootNode, LeafNode)):
+        if isinstance(node, RecordNode):
             return node
 
-        page = None
-
-        if key < node.smallest_key:
-            page = node.smallest_entry.before
-
-        elif node.biggest_key <= key:
-            page = node.biggest_entry.after
-
-        else:
-            for ref_a, ref_b in utils.pairwise(node.entries):
-                if ref_a.key <= key < ref_b.key:
-                    page = ref_a.after
-                    break
-
-        assert page is not None
+        page = node.find_next_node_page(key)
 
         child_node = self._mem.get_node(page)
         child_node.parent = node
