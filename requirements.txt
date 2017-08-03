@@ -1,0 +1,14 @@
+cachetools==2.0.0
+certifi==2017.7.27.1
+chardet==3.0.4
+coverage==4.0.3
+idna==2.5
+pep8==1.7.0
+py==1.4.33
+pytest==3.0.7
+pytest-cov==2.5.1
+python-coveralls==2.9.1
+PyYAML==3.12
+requests==2.18.3
+six==1.10.0
+urllib3==1.22

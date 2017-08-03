@@ -86,7 +86,7 @@ def test_file_memory_fsync(mock_fsync, clean_file):
     mem = FileMemory(filename, tree_conf, fsync=Fsync.ALWAYS)
     mem._write_page(0, bytes(tree_conf.page_size))
     mem.close()
-    mock_fsync.assert_called()
+    mock_fsync.assert_called_with(mock.ANY)
 
 
 def test_open_file_in_dir(clean_file):
