@@ -59,7 +59,9 @@ class Record(Entry):
         end_key = end_used_key_length + used_key_length
         self.key = int.from_bytes(data[end_used_key_length:end_key], ENDIAN)
 
-        start_used_value_length = end_used_key_length + self._tree_conf.key_size
+        start_used_value_length = (
+            end_used_key_length + self._tree_conf.key_size
+        )
         end_used_value_length = end_key + USED_VALUE_LENGTH_BYTES
         used_value_length = int.from_bytes(
             data[start_used_value_length:end_used_value_length], ENDIAN

@@ -147,8 +147,8 @@ class BPlusTree:
         if slice_.step is not None:
             raise ValueError('Cannot iterate with a custom step')
 
-        if (slice_.start is not None and slice_.stop is not None
-                and slice_.start >= slice_.stop):
+        if (slice_.start is not None and slice_.stop is not None and
+                slice_.start >= slice_.stop):
             raise ValueError('Cannot iterate backwards')
 
         if slice_.start is None:
