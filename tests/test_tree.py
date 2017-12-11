@@ -1,5 +1,6 @@
 import itertools
 import os
+from unittest import mock
 
 import pytest
 
@@ -40,6 +41,13 @@ def test_create_and_load_file(clean_file):
     assert isinstance(b._mem, FileMemory)
     assert b.get(5) == b'foo'
     b.close()
+
+
+@mock.patch('bplustree.tree.BPlusTree.close')
+def test_closing_context_manager(mock_close):
+    with BPlusTree(page_size=512, value_size=128) as b:
+        pass
+    mock_close.assert_called_once_with()
 
 
 def test_initial_values():

@@ -37,6 +37,12 @@ class BPlusTree:
     def close(self):
         self._mem.close()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
     def insert(self, key, value: bytes):
         if not isinstance(value, bytes):
             ValueError('Values must be bytes objects')
