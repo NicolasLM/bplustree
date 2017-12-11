@@ -1,5 +1,7 @@
 from collections import namedtuple
 
+VERSION = '0.0.1'
+
 # Endianess for storing numbers
 ENDIAN = 'little'
 
