@@ -7,8 +7,7 @@ import pytest
 from bplustree.memory import Memory, FileMemory, Fsync
 from bplustree.node import LonelyRootNode, LeafNode
 from bplustree.tree import BPlusTree
-
-filename = '/tmp/bplustree-testfile.index'
+from .conftest import filename
 
 
 @pytest.fixture

@@ -7,10 +7,10 @@ import pytest
 from bplustree.node import LeafNode
 from bplustree.memory import Memory, FileMemory, Fsync, open_file_in_dir
 from bplustree.const import TreeConf
+from .conftest import filename
 
 tree_conf = TreeConf(4096, 4, 16, 16)
 node = LeafNode(tree_conf, page=3)
-filename = '/tmp/bplustree-testfile.index'
 
 
 @pytest.fixture
