@@ -1,7 +1,8 @@
 from bplustree.entry import Record, Reference
 from bplustree.const import TreeConf
+from bplustree.serializer import IntSerializer
 
-tree_conf = TreeConf(4096, 4, 16, 16)
+tree_conf = TreeConf(4096, 4, 16, 16, IntSerializer())
 
 
 def test_record_serialization():

@@ -123,7 +123,9 @@ class FileMemory(Memory):
         value_size = int.from_bytes(
             data[end_key_size:end_value_size], ENDIAN
         )
-        self._tree_conf = TreeConf(page_size, order, key_size, value_size)
+        self._tree_conf = TreeConf(
+            page_size, order, key_size, value_size, self._tree_conf.serializer
+        )
         return root_node_page, self._tree_conf
 
     def set_metadata(self, root_node_page: int, tree_conf: TreeConf):

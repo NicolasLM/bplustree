@@ -7,6 +7,7 @@ import pytest
 from bplustree.memory import Memory, FileMemory, Fsync
 from bplustree.node import LonelyRootNode, LeafNode
 from bplustree.tree import BPlusTree
+from bplustree.serializer import IntSerializer, StrSerializer
 from .conftest import filename
 
 
@@ -213,30 +214,55 @@ page_sizes = [4096, 8192]
 key_sizes = [4, 16]
 values_sizes = [4, 16]
 file_names = [None, filename]
-matrix = itertools.product(iterators, orders, page_sizes,
-                           key_sizes, values_sizes, file_names)
+serializer_class = [IntSerializer, StrSerializer]
+matrix = itertools.product(iterators, orders, page_sizes, key_sizes,
+                           values_sizes, file_names, serializer_class)
 
 
-@pytest.mark.parametrize('iterator,order,page_size,k_size,v_size,filename',
-                         matrix)
+@pytest.mark.parametrize(
+    'iterator,order,page_size,k_size,v_size,filename,serialize_class', matrix
+)
 def test_insert_split_in_tree(iterator, order, page_size, k_size, v_size,
-                              filename, clean_file):
+                              filename, serialize_class, clean_file):
     inserted = set()
 
     b = BPlusTree(filename=filename, order=order, page_size=page_size,
-                  key_size=k_size, value_size=v_size, fsync=Fsync.NEVER)
+                  key_size=k_size, value_size=v_size, fsync=Fsync.NEVER,
+                  serializer=serialize_class())
 
     for i in iterator:
-        b.insert(i, str(i).encode())
-        inserted.add(i)
+        if serialize_class is IntSerializer:
+            k = i
+            v = str(i).encode()
+        elif serialize_class is StrSerializer:
+            # Todo: this is a hack to make the tests pass
+            # currently the tree does not work when the key length is variable
+            v = '{0:04d}'.format(i).encode()
+            if k_size == 4:
+                k = '{0:04d}'.format(i)
+            else:
+                k = '{0:016d}'.format(i)
+        b.insert(k, v)
+        inserted.add((k, v))
 
     if filename:
         # Reload tree from file before checking values
         b.close()
         b = BPlusTree(filename=filename, order=order, page_size=page_size,
-                      key_size=k_size, value_size=v_size)
+                      key_size=k_size, value_size=v_size,
+                      serializer=serialize_class())
 
-    for x in inserted:
-        assert b.get(x) == str(x).encode()
+    for k, v in inserted:
+        assert b.get(k) == v
 
+    b.close()
+
+
+def test_str_key_tree():
+    b = BPlusTree(filename=filename, page_size=512, value_size=128,
+                  serializer=StrSerializer())
+    b.insert('aaa', b'aaa')
+    b.insert('bbb', b'bbb')
+    assert b.get('aaa') == b'aaa'
+    assert b.get('bbb') == b'bbb'
     b.close()

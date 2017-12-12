@@ -57,7 +57,9 @@ class Record(Entry):
         assert 0 <= used_key_length <= self._tree_conf.key_size
 
         end_key = end_used_key_length + used_key_length
-        self.key = int.from_bytes(data[end_used_key_length:end_key], ENDIAN)
+        self.key = self._tree_conf.serializer.deserialize(
+            data[end_used_key_length:end_key]
+        )
 
         start_used_value_length = (
             end_used_key_length + self._tree_conf.key_size
@@ -72,9 +74,10 @@ class Record(Entry):
         self.value = data[end_used_value_length:end_value]
 
     def dump(self) -> bytes:
-        assert isinstance(self.key, int)
         assert isinstance(self.value, bytes)
-        key_as_bytes = self.key.to_bytes(self._tree_conf.key_size, ENDIAN)
+        key_as_bytes = self._tree_conf.serializer.serialize(
+            self.key, self._tree_conf.key_size
+        )
         used_key_length = len(key_as_bytes)
         used_value_length = len(self.value)
         data = (
@@ -122,7 +125,9 @@ class Reference(Entry):
         assert 0 <= used_key_length <= self._tree_conf.key_size
 
         end_key = end_used_key_length + used_key_length
-        self.key = int.from_bytes(data[end_used_key_length:end_key], ENDIAN)
+        self.key = self._tree_conf.serializer.deserialize(
+            data[end_used_key_length:end_key]
+        )
 
         start_after = end_used_key_length + self._tree_conf.key_size
         end_after = end_key + PAGE_REFERENCE_BYTES
@@ -130,10 +135,11 @@ class Reference(Entry):
 
     def dump(self) -> bytes:
         assert isinstance(self.before, int)
-        assert isinstance(self.key, int)
         assert isinstance(self.after, int)
 
-        key_as_bytes = self.key.to_bytes(self._tree_conf.key_size, ENDIAN)
+        key_as_bytes = self._tree_conf.serializer.serialize(
+            self.key, self._tree_conf.key_size
+        )
         used_key_length = len(key_as_bytes)
 
         data = (

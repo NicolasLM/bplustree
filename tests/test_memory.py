@@ -8,8 +8,9 @@ from bplustree.node import LeafNode
 from bplustree.memory import Memory, FileMemory, Fsync, open_file_in_dir
 from bplustree.const import TreeConf
 from .conftest import filename
+from bplustree.serializer import IntSerializer
 
-tree_conf = TreeConf(4096, 4, 16, 16)
+tree_conf = TreeConf(4096, 4, 16, 16, IntSerializer())
 node = LeafNode(tree_conf, page=3)
 
 

@@ -4,8 +4,9 @@ from bplustree.const import TreeConf, ENDIAN
 from bplustree.entry import Record, Reference
 from bplustree.node import (Node, LonelyRootNode, RootNode, InternalNode,
                             LeafNode)
+from bplustree.serializer import IntSerializer
 
-tree_conf = TreeConf(4096, 7, 16, 16)
+tree_conf = TreeConf(4096, 7, 16, 16, IntSerializer())
 
 
 @pytest.mark.parametrize('klass,order,min_children,max_children', [
@@ -19,7 +20,7 @@ tree_conf = TreeConf(4096, 7, 16, 16)
     (LeafNode, 100, 49, 99),
 ])
 def test_node_limit_children(klass, order, min_children, max_children):
-    node = klass(TreeConf(4096, order, 16, 16))
+    node = klass(TreeConf(4096, order, 16, 16, IntSerializer()))
     assert node.min_children == min_children
     assert node.max_children == max_children
 
@@ -75,7 +76,7 @@ def test_root_node_serialization():
 
 def test_get_node_from_page_data():
     data = (2).to_bytes(1, ENDIAN) + bytes(4096 - 1)
-    tree_conf = TreeConf(4096, 7, 16, 16)
+    tree_conf = TreeConf(4096, 7, 16, 16, IntSerializer())
     assert isinstance(
         Node.from_page_data(tree_conf, data, 4),
         RootNode

@@ -25,8 +25,9 @@ OTHERS_BYTES = 4
 
 
 TreeConf = namedtuple('TreeConf', [
-    'page_size',  # Size of a page within the tree in bytes
-    'order',  # Branching factor of the tree
-    'key_size',  # Maximum size of a key in bytes
+    'page_size',   # Size of a page within the tree in bytes
+    'order',       # Branching factor of the tree
+    'key_size',    # Maximum size of a key in bytes
     'value_size',  # Maximum size of a value in bytes
+    'serializer',  # Instance of a Serializer
 ])

@@ -6,6 +6,7 @@ from .const import TreeConf
 from .entry import Record, Reference
 from .memory import Memory, FileMemory, Fsync
 from .node import Node, LonelyRootNode, RootNode, InternalNode, LeafNode
+from .serializer import Serializer, IntSerializer
 
 
 class BPlusTree:
@@ -15,9 +16,13 @@ class BPlusTree:
     def __init__(self, filename: Optional[str]=None,
                  page_size: int= 4096, order: int=4, key_size: int=16,
                  value_size: int=16, cache_size: int=1000,
-                 fsync: Fsync=Fsync.ALWAYS):
+                 fsync: Fsync=Fsync.ALWAYS,
+                 serializer: Optional[Serializer]=None):
         self._filename = filename
-        self._tree_conf = TreeConf(page_size, order, key_size, value_size)
+        self._tree_conf = TreeConf(
+            page_size, order, key_size, value_size,
+            serializer or IntSerializer()
+        )
         self._create_partials()
         if not filename:
             self._mem = Memory()
