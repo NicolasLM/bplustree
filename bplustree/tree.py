@@ -16,7 +16,7 @@ class BPlusTree:
     def __init__(self, filename: Optional[str]=None,
                  page_size: int= 4096, order: int=4, key_size: int=16,
                  value_size: int=16, cache_size: int=1000,
-                 fsync: Fsync=Fsync.ALWAYS,
+                 fsync: Fsync=Fsync.NEVER,
                  serializer: Optional[Serializer]=None):
         self._filename = filename
         self._tree_conf = TreeConf(
