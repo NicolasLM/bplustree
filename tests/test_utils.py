@@ -4,8 +4,7 @@ from bplustree.utils import pairwise
 
 
 def test_pairwise():
-    l = [0, 1, 2, 3, 4]
-    i = pairwise(l)
+    i = pairwise([0, 1, 2, 3, 4])
     assert next(i) == (0, 1)
     assert next(i) == (1, 2)
     assert next(i) == (2, 3)

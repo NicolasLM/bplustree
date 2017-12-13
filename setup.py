@@ -49,7 +49,7 @@ setup(
             'pytest',
             'pytest-cov',
             'python-coveralls',
-            'pep8'
+            'pycodestyle'
         ],
     },
 )

@@ -9,7 +9,7 @@ install:
 
 script:
     - pytest -v --cov=bplustree tests/
-    - pep8 bplustree tests
+    - pycodestyle bplustree tests
 
 after_success:
   - coveralls
