@@ -204,6 +204,7 @@ def test_left_record_node_in_tree():
     assert isinstance(b._left_record_node, LeafNode)
     b.close()
 
+
 iterators = [
     range(0, 1000, 1),
     range(1000, 0, -1),
@@ -231,17 +232,11 @@ def test_insert_split_in_tree(iterator, order, page_size, k_size, v_size,
                   serializer=serialize_class())
 
     for i in iterator:
+        v = str(i).encode()
         if serialize_class is IntSerializer:
             k = i
-            v = str(i).encode()
         elif serialize_class is StrSerializer:
-            # Todo: this is a hack to make the tests pass
-            # currently the tree does not work when the key length is variable
-            v = '{0:04d}'.format(i).encode()
-            if k_size == 4:
-                k = '{0:04d}'.format(i)
-            else:
-                k = '{0:016d}'.format(i)
+            k = str(i)
         b.insert(k, v)
         inserted.add((k, v))
 
@@ -255,14 +250,4 @@ def test_insert_split_in_tree(iterator, order, page_size, k_size, v_size,
     for k, v in inserted:
         assert b.get(k) == v
 
-    b.close()
-
-
-def test_str_key_tree():
-    b = BPlusTree(filename=filename, page_size=512, value_size=128,
-                  serializer=StrSerializer())
-    b.insert('aaa', b'aaa')
-    b.insert('bbb', b'bbb')
-    assert b.get('aaa') == b'aaa'
-    assert b.get('bbb') == b'bbb'
     b.close()

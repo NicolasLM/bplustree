@@ -26,7 +26,9 @@ class IntSerializer(Serializer):
 class StrSerializer(Serializer):
 
     def serialize(self, obj: str, key_size: int) -> bytes:
-        return obj.encode(encoding='utf-8')
+        rv = obj.encode(encoding='utf-8')
+        assert len(rv) <= key_size
+        return rv
 
     def deserialize(self, data: bytes) -> str:
         return data.decode(encoding='utf-8')

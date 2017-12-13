@@ -64,7 +64,9 @@ class Record(Entry):
         start_used_value_length = (
             end_used_key_length + self._tree_conf.key_size
         )
-        end_used_value_length = end_key + USED_VALUE_LENGTH_BYTES
+        end_used_value_length = (
+            start_used_value_length + USED_VALUE_LENGTH_BYTES
+        )
         used_value_length = int.from_bytes(
             data[start_used_value_length:end_used_value_length], ENDIAN
         )
@@ -130,7 +132,7 @@ class Reference(Entry):
         )
 
         start_after = end_used_key_length + self._tree_conf.key_size
-        end_after = end_key + PAGE_REFERENCE_BYTES
+        end_after = start_after + PAGE_REFERENCE_BYTES
         self.after = int.from_bytes(data[start_after:end_after], ENDIAN)
 
     def dump(self) -> bytes:
