@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from uuid import UUID
 
 from .const import ENDIAN
 
@@ -32,3 +33,12 @@ class StrSerializer(Serializer):
 
     def deserialize(self, data: bytes) -> str:
         return data.decode(encoding='utf-8')
+
+
+class UUIDSerializer(Serializer):
+
+    def serialize(self, obj: UUID, key_size: int) -> bytes:
+        return obj.bytes
+
+    def deserialize(self, data: bytes) -> UUID:
+        return UUID(bytes=data)

@@ -1,13 +1,14 @@
 import itertools
 import os
 from unittest import mock
+import uuid
 
 import pytest
 
 from bplustree.memory import Memory, FileMemory, Fsync
 from bplustree.node import LonelyRootNode, LeafNode
 from bplustree.tree import BPlusTree
-from bplustree.serializer import IntSerializer, StrSerializer
+from bplustree.serializer import IntSerializer, StrSerializer, UUIDSerializer
 from .conftest import filename
 
 
@@ -233,9 +234,8 @@ def test_insert_split_in_tree(iterator, order, page_size, k_size, v_size,
 
     for i in iterator:
         v = str(i).encode()
-        if serialize_class is IntSerializer:
-            k = i
-        elif serialize_class is StrSerializer:
+        k = i
+        if serialize_class is StrSerializer:
             k = str(i)
         b.insert(k, v)
         inserted.add((k, v))
@@ -251,3 +251,17 @@ def test_insert_split_in_tree(iterator, order, page_size, k_size, v_size,
         assert b.get(k) == v
 
     b.close()
+
+
+def test_insert_split_in_tree_uuid(clean_file):
+    # Not in the test matrix because the iterators don't really make sense
+    test_insert_split_in_tree(
+        [uuid.uuid4() for _ in range(1000)],
+        20,
+        4096,
+        16,
+        40,
+        filename,
+        UUIDSerializer,
+        None
+    )

@@ -1,4 +1,6 @@
-from bplustree.serializer import IntSerializer, StrSerializer
+import uuid
+
+from bplustree.serializer import IntSerializer, StrSerializer, UUIDSerializer
 
 
 def test_int_serializer():
@@ -11,3 +13,10 @@ def test_str_serializer():
     s = StrSerializer()
     assert s.serialize('foo', 3) == b'foo'
     assert s.deserialize(b'foo') == 'foo'
+
+
+def test_uuid_serializer():
+    s = UUIDSerializer()
+    id_ = uuid.uuid4()
+    assert s.serialize(id_, 16) == id_.bytes
+    assert s.deserialize(id_.bytes) == id_
