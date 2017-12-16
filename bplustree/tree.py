@@ -4,7 +4,7 @@ from typing import Optional, Union, Iterator
 from . import utils
 from .const import TreeConf
 from .entry import Record, Reference
-from .memory import Memory, FileMemory, Fsync
+from .memory import Memory, FileMemory
 from .node import Node, LonelyRootNode, RootNode, InternalNode, LeafNode
 from .serializer import Serializer, IntSerializer
 
@@ -15,9 +15,7 @@ class BPlusTree:
 
     def __init__(self, filename: Optional[str]=None,
                  page_size: int= 4096, order: int=4, key_size: int=16,
-                 value_size: int=16, cache_size: int=1000,
-                 fsync: Fsync=Fsync.NEVER,
-                 serializer: Optional[Serializer]=None):
+                 value_size: int=16, serializer: Optional[Serializer]=None):
         self._filename = filename
         self._tree_conf = TreeConf(
             page_size, order, key_size, value_size,
@@ -28,10 +26,7 @@ class BPlusTree:
             self._mem = Memory()
             self._initialize_empty_tree()
         else:
-            self._mem = FileMemory(
-                filename, self._tree_conf, cache_size=cache_size,
-                fsync=fsync
-            )
+            self._mem = FileMemory(filename, self._tree_conf)
             try:
                 metadata = self._mem.get_metadata()
             except ValueError:

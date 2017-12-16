@@ -13,11 +13,6 @@ from .const import (
 logger = getLogger(__name__)
 
 
-class Fsync(enum.Enum):
-    ALWAYS = 1
-    NEVER = 2
-
-
 class ReachedEndOfFile(Exception):
     """Read a file until its end."""
 
@@ -44,7 +39,7 @@ def open_file_in_dir(path: str) -> Tuple[io.FileIO, int]:
 
 
 def write_to_file(file_fd: io.FileIO, dir_fileno: int,
-                  data: bytes, fsync: bool):
+                  data: bytes, fsync: bool=True):
     length_to_write = len(data)
     written = 0
     while written < length_to_write:
@@ -54,7 +49,6 @@ def write_to_file(file_fd: io.FileIO, dir_fileno: int,
 
 
 def fsync_file_and_dir(file_fileno: int, dir_fileno: int):
-    return
     os.fsync(file_fileno)
     os.fsync(dir_fileno)
 
@@ -111,13 +105,11 @@ class Memory:
 
 class FileMemory(Memory):
 
-    def __init__(self, filename: str, tree_conf: TreeConf,
-                 cache_size: int=1000, fsync: Fsync=Fsync.ALWAYS):
+    def __init__(self, filename: str, tree_conf: TreeConf):
         super().__init__()
         self._fd, self._dir_fd = open_file_in_dir(filename)
         self._wal = WAL(filename, tree_conf.page_size)
         self._tree_conf = tree_conf
-        self.fsync = fsync
 
         # Get the next available page
         self._fd.seek(0, io.SEEK_END)
@@ -197,7 +189,7 @@ class FileMemory(Memory):
         """
         assert len(data) == self._tree_conf.page_size
         self._fd.seek(page * self._tree_conf.page_size)
-        write_to_file(self._fd, self._dir_fd, data, self.fsync is Fsync.ALWAYS)
+        write_to_file(self._fd, self._dir_fd, data)
 
 
 class FrameType(enum.Enum):

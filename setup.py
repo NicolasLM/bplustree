@@ -40,9 +40,7 @@ setup(
     keywords='bplustree B+tree Btree database index',
 
     packages=find_packages(include=('bplustree', 'bplustree.*')),
-    install_requires=[
-        'cachetools'
-    ],
+    install_requires=[],
 
     extras_require={
         'tests': [

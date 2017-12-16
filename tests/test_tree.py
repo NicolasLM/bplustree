@@ -1,11 +1,10 @@
 import itertools
-import os
 from unittest import mock
 import uuid
 
 import pytest
 
-from bplustree.memory import Memory, FileMemory, Fsync
+from bplustree.memory import Memory, FileMemory
 from bplustree.node import LonelyRootNode, LeafNode
 from bplustree.tree import BPlusTree
 from bplustree.serializer import IntSerializer, StrSerializer, UUIDSerializer
@@ -23,7 +22,7 @@ def test_create_in_memory(b):
     assert isinstance(b._mem, Memory)
 
 
-def test_create_and_load_file(clean_file):
+def test_create_and_load_file():
     b = BPlusTree(filename=filename)
     assert isinstance(b._mem, FileMemory)
     b.insert(5, b'foo')
@@ -216,11 +215,11 @@ matrix = itertools.product(iterators, orders, page_sizes, key_sizes,
     'iterator,order,page_size,k_size,v_size,filename,serialize_class', matrix
 )
 def test_insert_split_in_tree(iterator, order, page_size, k_size, v_size,
-                              filename, serialize_class, clean_file):
+                              filename, serialize_class):
     inserted = set()
 
     b = BPlusTree(filename=filename, order=order, page_size=page_size,
-                  key_size=k_size, value_size=v_size, fsync=Fsync.NEVER,
+                  key_size=k_size, value_size=v_size,
                   serializer=serialize_class())
 
     for i in iterator:
@@ -244,7 +243,7 @@ def test_insert_split_in_tree(iterator, order, page_size, k_size, v_size,
     b.close()
 
 
-def test_insert_split_in_tree_uuid(clean_file):
+def test_insert_split_in_tree_uuid():
     # Not in the test matrix because the iterators don't really make sense
     test_insert_split_in_tree(
         [uuid.uuid4() for _ in range(1000)],
@@ -253,6 +252,5 @@ def test_insert_split_in_tree_uuid(clean_file):
         16,
         40,
         filename,
-        UUIDSerializer,
-        None
+        UUIDSerializer
     )

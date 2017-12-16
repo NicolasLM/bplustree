@@ -54,7 +54,7 @@ def test_file_memory_node():
     mem.close()
 
 
-def test_file_memory_metadata(clean_file):
+def test_file_memory_metadata():
     mem = FileMemory(filename, tree_conf)
     with pytest.raises(ValueError):
         mem.get_metadata()
@@ -62,13 +62,13 @@ def test_file_memory_metadata(clean_file):
     assert mem.get_metadata() == (6, tree_conf)
 
 
-def test_file_memory_next_available_page(clean_file):
+def test_file_memory_next_available_page():
     mem = FileMemory(filename, tree_conf)
     for i in range(1, 100):
         assert mem.next_available_page == i
 
 
-def test_open_file_in_dir(clean_file):
+def test_open_file_in_dir():
     with pytest.raises(ValueError):
         open_file_in_dir('/foo/bar/does/not/exist')
 
