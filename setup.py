@@ -40,7 +40,9 @@ setup(
     keywords='bplustree B+tree Btree database index',
 
     packages=find_packages(include=('bplustree', 'bplustree.*')),
-    install_requires=[],
+    install_requires=[
+        'rwlock'
+    ],
 
     extras_require={
         'tests': [

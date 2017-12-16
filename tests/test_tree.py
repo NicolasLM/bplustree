@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 
-from bplustree.memory import Memory, FileMemory
+from bplustree.memory import FileMemory
 from bplustree.node import LonelyRootNode, LeafNode
 from bplustree.tree import BPlusTree
 from bplustree.serializer import IntSerializer, StrSerializer, UUIDSerializer
@@ -13,22 +13,18 @@ from .conftest import filename
 
 @pytest.fixture
 def b():
-    b = BPlusTree()
+    b = BPlusTree(filename)
     yield b
     b.close()
 
 
-def test_create_in_memory(b):
-    assert isinstance(b._mem, Memory)
-
-
 def test_create_and_load_file():
-    b = BPlusTree(filename=filename)
+    b = BPlusTree(filename)
     assert isinstance(b._mem, FileMemory)
     b.insert(5, b'foo')
     b.close()
 
-    b = BPlusTree(filename=filename)
+    b = BPlusTree(filename)
     assert isinstance(b._mem, FileMemory)
     assert b.get(5) == b'foo'
     b.close()
@@ -36,13 +32,13 @@ def test_create_and_load_file():
 
 @mock.patch('bplustree.tree.BPlusTree.close')
 def test_closing_context_manager(mock_close):
-    with BPlusTree(page_size=512, value_size=128) as b:
+    with BPlusTree(filename, page_size=512, value_size=128) as b:
         pass
     mock_close.assert_called_once_with()
 
 
 def test_initial_values():
-    b = BPlusTree(page_size=512, value_size=128)
+    b = BPlusTree(filename, page_size=512, value_size=128)
     assert b._tree_conf.page_size == 512
     assert b._tree_conf.order == 4
     assert b._tree_conf.key_size == 16
@@ -80,7 +76,7 @@ def test_len_tree(b):
 
 
 def test_length_hint_tree():
-    b = BPlusTree(order=100)
+    b = BPlusTree(filename, order=100)
     assert b.__length_hint__() == 49
     b.insert(1, b'foo')
     assert b.__length_hint__() == 49
@@ -172,7 +168,7 @@ def test_iter_slice(b):
     assert next(iter).key == 0
 
     # Contains from 10, 20, 30 .. 200
-    b2 = BPlusTree(order=5)
+    b2 = BPlusTree(filename, order=5)
     for i in range(10, 201, 10):
         b.insert(i, str(i).encode())
 
@@ -186,7 +182,7 @@ def test_iter_slice(b):
 
 
 def test_left_record_node_in_tree():
-    b = BPlusTree(order=3)
+    b = BPlusTree(filename, order=3)
     assert b._left_record_node == b._root_node
     assert isinstance(b._left_record_node, LonelyRootNode)
     b.insert(1, b'1')
@@ -205,20 +201,19 @@ orders = [3, 4, 50]
 page_sizes = [4096, 8192]
 key_sizes = [4, 16]
 values_sizes = [4, 16]
-file_names = [None, filename]
 serializer_class = [IntSerializer, StrSerializer]
 matrix = itertools.product(iterators, orders, page_sizes, key_sizes,
-                           values_sizes, file_names, serializer_class)
+                           values_sizes, serializer_class)
 
 
 @pytest.mark.parametrize(
-    'iterator,order,page_size,k_size,v_size,filename,serialize_class', matrix
+    'iterator,order,page_size,k_size,v_size,serialize_class', matrix
 )
 def test_insert_split_in_tree(iterator, order, page_size, k_size, v_size,
-                              filename, serialize_class):
+                              serialize_class):
     inserted = set()
 
-    b = BPlusTree(filename=filename, order=order, page_size=page_size,
+    b = BPlusTree(filename, order=order, page_size=page_size,
                   key_size=k_size, value_size=v_size,
                   serializer=serialize_class())
 
@@ -233,7 +228,7 @@ def test_insert_split_in_tree(iterator, order, page_size, k_size, v_size,
     if filename:
         # Reload tree from file before checking values
         b.close()
-        b = BPlusTree(filename=filename, order=order, page_size=page_size,
+        b = BPlusTree(filename, order=order, page_size=page_size,
                       key_size=k_size, value_size=v_size,
                       serializer=serialize_class())
 
@@ -251,6 +246,5 @@ def test_insert_split_in_tree_uuid():
         4096,
         16,
         40,
-        filename,
         UUIDSerializer
     )

@@ -6,7 +6,7 @@ import pytest
 
 from bplustree.node import LeafNode
 from bplustree.memory import (
-    Memory, FileMemory, open_file_in_dir, WAL, ReachedEndOfFile
+    FileMemory, open_file_in_dir, WAL, ReachedEndOfFile
 )
 from bplustree.const import TreeConf
 from .conftest import filename
@@ -14,32 +14,6 @@ from bplustree.serializer import IntSerializer
 
 tree_conf = TreeConf(4096, 4, 16, 16, IntSerializer())
 node = LeafNode(tree_conf, page=3)
-
-
-def test_memory_node():
-    mem = Memory()
-
-    with pytest.raises(ValueError):
-        mem.get_node(3)
-
-    mem.set_node(node)
-    assert mem.get_node(3) == node
-
-    mem.close()
-
-
-def test_memory_metadata():
-    mem = Memory()
-    with pytest.raises(ValueError):
-        mem.get_metadata()
-    mem.set_metadata(6, tree_conf)
-    assert mem.get_metadata() == (6, tree_conf)
-
-
-def test_memory_next_available_page():
-    mem = Memory()
-    for i in range(1, 100):
-        assert mem.next_available_page == i
 
 
 def test_file_memory_node():
@@ -79,6 +53,32 @@ def test_open_file_in_dir():
         assert isinstance(dir_fd, int)
         file_fd.close()
         os.close(dir_fd)
+
+
+def test_file_memory_write_transaction():
+    mem = FileMemory(filename, tree_conf)
+    mem._lock = mock.Mock()
+
+    assert mem._wal._not_committed_pages == {}
+    assert mem._wal._committed_pages == {}
+
+    with mem.write_transaction:
+        mem.set_node(node)
+        assert mem._wal._not_committed_pages == {3: 9}
+        assert mem._wal._committed_pages == {}
+        assert mem._lock.writer_lock.acquire.call_count == 1
+
+    assert mem._wal._not_committed_pages == {}
+    assert mem._wal._committed_pages == {3: 9}
+    assert mem._lock.writer_lock.release.call_count == 1
+    assert mem._lock.reader_lock.acquire.call_count == 0
+
+    with mem.read_transaction:
+        assert mem._lock.reader_lock.acquire.call_count == 1
+        assert node == mem.get_node(3)
+
+    assert mem._lock.reader_lock.release.call_count == 1
+    mem.close()
 
 
 def test_wal_create_reopen_empty():

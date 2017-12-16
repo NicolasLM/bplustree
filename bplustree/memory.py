@@ -4,10 +4,11 @@ from logging import getLogger
 import os
 from typing import Union, Tuple, Optional
 
+import rwlock
+
 from .node import Node
 from .const import (
-    ENDIAN, PAGE_REFERENCE_BYTES, OTHERS_BYTES, TreeConf,
-    FRAME_TYPE_BYTES, TRANSACTION_ID_BYTES
+    ENDIAN, PAGE_REFERENCE_BYTES, OTHERS_BYTES, TreeConf, FRAME_TYPE_BYTES
 )
 
 logger = getLogger(__name__)
@@ -67,46 +68,10 @@ def read_from_file(file_fd: io.FileIO, start: int, stop: int) -> bytes:
     return data
 
 
-class Memory:
-
-    def __init__(self):
-        self._nodes = dict()
-        self._metadata = dict()
-        self.last_page = 0
-
-    def get_node(self, page: int):
-        try:
-            return self._nodes[page]
-        except KeyError:
-            raise ValueError('No node at page {}'.format(page))
-
-    def set_node(self, node: Node):
-        self._nodes[node.page] = node
-
-    def get_metadata(self) -> tuple:
-        try:
-            rv = self._metadata['root_node_page'], self._metadata['tree_conf']
-            return rv
-        except KeyError:
-            raise ValueError('Metadata not set yet')
-
-    def set_metadata(self, root_node_page: int, tree_conf: TreeConf):
-        self._metadata['root_node_page'] = root_node_page
-        self._metadata['tree_conf'] = tree_conf
-
-    @property
-    def next_available_page(self) -> int:
-        self.last_page += 1
-        return self.last_page
-
-    def close(self):
-        pass
-
-
-class FileMemory(Memory):
+class FileMemory:
 
     def __init__(self, filename: str, tree_conf: TreeConf):
-        super().__init__()
+        self._lock = rwlock.RWLock()
         self._fd, self._dir_fd = open_file_in_dir(filename)
         self._tree_conf = tree_conf
 
@@ -128,7 +93,46 @@ class FileMemory(Memory):
 
     def set_node(self, node: Node):
         self._wal.set_page(node.page, node.dump())
-        self._wal.commit()
+
+    @property
+    def read_transaction(self):
+
+        lock = self._lock
+
+        class ReadTransaction:
+
+            def __enter__(self):
+                lock.reader_lock.acquire()
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                lock.reader_lock.release()
+
+        return ReadTransaction()
+
+    @property
+    def write_transaction(self):
+
+        lock = self._lock
+        wal = self._wal
+
+        class WriteTransaction:
+
+            def __enter__(self):
+                lock.writer_lock.acquire()
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                if exc_type:
+                    wal.rollback()
+                else:
+                    wal.commit()
+                lock.writer_lock.release()
+
+        return WriteTransaction()
+
+    @property
+    def next_available_page(self) -> int:
+        self.last_page += 1
+        return self.last_page
 
     def get_metadata(self) -> tuple:
         try:
@@ -207,7 +211,7 @@ class FrameType(enum.Enum):
 class WAL:
 
     FRAME_HEADER_LENGTH = (
-        FRAME_TYPE_BYTES + TRANSACTION_ID_BYTES + PAGE_REFERENCE_BYTES
+        FRAME_TYPE_BYTES + PAGE_REFERENCE_BYTES
     )
 
     def __init__(self, filename: str, page_size: int):
@@ -272,13 +276,8 @@ class WAL:
         data = read_from_file(self._fd, start, stop)
 
         frame_type = int.from_bytes(data[0:FRAME_TYPE_BYTES], ENDIAN)
-        transaction_id = int.from_bytes(
-            data[FRAME_TYPE_BYTES:FRAME_TYPE_BYTES+TRANSACTION_ID_BYTES],
-            ENDIAN
-        )
         page = int.from_bytes(
-            data[FRAME_TYPE_BYTES+TRANSACTION_ID_BYTES:
-                 FRAME_TYPE_BYTES+TRANSACTION_ID_BYTES+PAGE_REFERENCE_BYTES],
+            data[FRAME_TYPE_BYTES:FRAME_TYPE_BYTES+PAGE_REFERENCE_BYTES],
             ENDIAN
         )
 
@@ -299,8 +298,8 @@ class WAL:
         else:
             assert False
 
-    def _add_frame(self, frame_type: FrameType, transaction_id: int,
-                   page: Optional[int]=None, page_data: Optional[bytes]=None):
+    def _add_frame(self, frame_type: FrameType, page: Optional[int]=None,
+                   page_data: Optional[bytes]=None):
         if frame_type is FrameType.PAGE and (not page or not page_data):
             raise ValueError('PAGE frame without page data')
         if page_data and len(page_data) != self._page_size:
@@ -311,7 +310,6 @@ class WAL:
             page_data = b''
         data = (
             frame_type.value.to_bytes(FRAME_TYPE_BYTES, ENDIAN) +
-            transaction_id.to_bytes(TRANSACTION_ID_BYTES, ENDIAN) +
             page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN) +
             page_data
         )
@@ -334,13 +332,13 @@ class WAL:
                               page_start + self._page_size)
 
     def set_page(self, page: int, page_data: bytes):
-        self._add_frame(FrameType.PAGE, 0, page, page_data)
+        self._add_frame(FrameType.PAGE, page, page_data)
 
     def commit(self):
-        self._add_frame(FrameType.COMMIT, 0)
+        self._add_frame(FrameType.COMMIT)
 
     def rollback(self):
-        self._add_frame(FrameType.ROLLBACK, 0)
+        self._add_frame(FrameType.ROLLBACK)
 
     def __repr__(self):
         return '<WAL: {}>'.format(self.filename)

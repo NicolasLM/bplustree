@@ -4,7 +4,7 @@ from typing import Optional, Union, Iterator
 from . import utils
 from .const import TreeConf
 from .entry import Record, Reference
-from .memory import Memory, FileMemory
+from .memory import FileMemory
 from .node import Node, LonelyRootNode, RootNode, InternalNode, LeafNode
 from .serializer import Serializer, IntSerializer
 
@@ -13,26 +13,22 @@ class BPlusTree:
 
     # ######################### Public API ################################
 
-    def __init__(self, filename: Optional[str]=None,
-                 page_size: int= 4096, order: int=4, key_size: int=16,
-                 value_size: int=16, serializer: Optional[Serializer]=None):
+    def __init__(self, filename: str, page_size: int= 4096, order: int=4,
+                 key_size: int=16, value_size: int=16,
+                 serializer: Optional[Serializer]=None):
         self._filename = filename
         self._tree_conf = TreeConf(
             page_size, order, key_size, value_size,
             serializer or IntSerializer()
         )
         self._create_partials()
-        if not filename:
-            self._mem = Memory()
+        self._mem = FileMemory(filename, self._tree_conf)
+        try:
+            metadata = self._mem.get_metadata()
+        except ValueError:
             self._initialize_empty_tree()
         else:
-            self._mem = FileMemory(filename, self._tree_conf)
-            try:
-                metadata = self._mem.get_metadata()
-            except ValueError:
-                self._initialize_empty_tree()
-            else:
-                self._root_node_page, self._tree_conf = metadata
+            self._root_node_page, self._tree_conf = metadata
 
     def close(self):
         self._mem.close()
@@ -47,79 +43,88 @@ class BPlusTree:
         if not isinstance(value, bytes):
             ValueError('Values must be bytes objects')
 
-        node = self._search_in_tree(key, self._root_node)
-        if node.can_add_entry:
-            node.insert_entry(self.Record(key, value))
-            self._mem.set_node(node)
-        else:
-            node.insert_entry(self.Record(key, value))
-            self._split_leaf(node)
+        with self._mem.write_transaction:
+            node = self._search_in_tree(key, self._root_node)
+            if node.can_add_entry:
+                node.insert_entry(self.Record(key, value))
+                self._mem.set_node(node)
+            else:
+                node.insert_entry(self.Record(key, value))
+                self._split_leaf(node)
 
     def get(self, key, default=None) -> bytes:
-        node = self._search_in_tree(key, self._root_node)
-        try:
-            record = node.get_entry(key)
-        except ValueError:
-            return default
-        else:
-            assert isinstance(record.value, bytes)
-            return record.value
+        with self._mem.read_transaction:
+            node = self._search_in_tree(key, self._root_node)
+            try:
+                record = node.get_entry(key)
+            except ValueError:
+                return default
+            else:
+                assert isinstance(record.value, bytes)
+                return record.value
 
     def __contains__(self, item):
-        o = object()
-        return False if self.get(item, default=o) is o else True
+        with self._mem.read_transaction:
+            o = object()
+            return False if self.get(item, default=o) is o else True
 
     def __getitem__(self, item):
         if isinstance(item, slice):
             raise NotImplemented()
-        return self.get(item)
+        with self._mem.read_transaction:
+            return self.get(item)
 
     def __len__(self):
-        node = self._left_record_node
-        rv = 0
-        while True:
-            rv += len(node.entries)
-            if not node.next_page:
-                return rv
-            node = self._mem.get_node(node.next_page)
+        with self._mem.read_transaction:
+            node = self._left_record_node
+            rv = 0
+            while True:
+                rv += len(node.entries)
+                if not node.next_page:
+                    return rv
+                node = self._mem.get_node(node.next_page)
 
     def __length_hint__(self):
-        node = self._root_node
-        if isinstance(node, LonelyRootNode):
-            # Assume that the lonely root node is half full
-            return node.max_children // 2
-        # Assume that there are no holes in pages
-        last_page = self._mem.last_page
-        # Assume that 70% of nodes in a tree carry values
-        num_leaf_nodes = int(last_page * 0.70)
-        # Assume that every leaf node is half full
-        num_records_per_leaf_node = int(
-            (node.max_children + node.min_children) / 2
-        )
-        return num_leaf_nodes * num_records_per_leaf_node
+        with self._mem.read_transaction:
+            node = self._root_node
+            if isinstance(node, LonelyRootNode):
+                # Assume that the lonely root node is half full
+                return node.max_children // 2
+            # Assume that there are no holes in pages
+            last_page = self._mem.last_page
+            # Assume that 70% of nodes in a tree carry values
+            num_leaf_nodes = int(last_page * 0.70)
+            # Assume that every leaf node is half full
+            num_records_per_leaf_node = int(
+                (node.max_children + node.min_children) / 2
+            )
+            return num_leaf_nodes * num_records_per_leaf_node
 
     def __iter__(self):
-        for record in self._iter_slice(slice(None)):
-            yield record.key
+        with self._mem.read_transaction:
+            for record in self._iter_slice(slice(None)):
+                yield record.key
 
     keys = __iter__
 
     def items(self) -> Iterator[tuple]:
-        for record in self._iter_slice(slice(None)):
-            yield record.key, record.value
+        with self._mem.read_transaction:
+            for record in self._iter_slice(slice(None)):
+                yield record.key, record.value
 
     def values(self) -> Iterator[bytes]:
-        for record in self._iter_slice(slice(None)):
-            yield record.value
+        with self._mem.read_transaction:
+            for record in self._iter_slice(slice(None)):
+                yield record.value
 
     def __bool__(self):
-        for _ in self:
-            return True
-        return False
+        with self._mem.read_transaction:
+            for _ in self:
+                return True
+            return False
 
     def __repr__(self):
-        backend = (self._filename if self._filename else 'In memory')
-        return '<BPlusTree: {} {}>'.format(backend, self._tree_conf)
+        return '<BPlusTree: {} {}>'.format(self._filename, self._tree_conf)
 
     # ####################### Implementation ##############################
 
