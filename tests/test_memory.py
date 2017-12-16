@@ -81,6 +81,25 @@ def test_file_memory_write_transaction():
     mem.close()
 
 
+def test_file_memory_write_transaction_error():
+    mem = FileMemory(filename, tree_conf)
+    mem._lock = mock.Mock()
+
+    try:
+        with mem.write_transaction:
+            mem.set_node(node)
+            assert mem._wal._not_committed_pages == {3: 9}
+            assert mem._wal._committed_pages == {}
+            assert mem._lock.writer_lock.acquire.call_count == 1
+            raise ValueError('Foo')
+    except ValueError:
+        pass
+
+    assert mem._wal._not_committed_pages == {}
+    assert mem._wal._committed_pages == {}
+    assert mem._lock.writer_lock.release.call_count == 1
+
+
 def test_wal_create_reopen_empty():
     WAL(filename, 64)
 
