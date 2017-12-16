@@ -20,6 +20,12 @@ USED_PAGE_LENGTH_BYTES = 3
 USED_KEY_LENGTH_BYTES = 2
 USED_VALUE_LENGTH_BYTES = 2
 
+# 4 billions transactions, like Postgres
+TRANSACTION_ID_BYTES = 4
+
+# Max 256 types of frames
+FRAME_TYPE_BYTES = 1
+
 # Bytes used for storing general purpose integers like file metadata
 OTHERS_BYTES = 4
 

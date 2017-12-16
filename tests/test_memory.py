@@ -5,22 +5,15 @@ from unittest import mock
 import pytest
 
 from bplustree.node import LeafNode
-from bplustree.memory import Memory, FileMemory, Fsync, open_file_in_dir
+from bplustree.memory import (
+    Memory, FileMemory, open_file_in_dir, WAL, ReachedEndOfFile
+)
 from bplustree.const import TreeConf
 from .conftest import filename
 from bplustree.serializer import IntSerializer
 
 tree_conf = TreeConf(4096, 4, 16, 16, IntSerializer())
 node = LeafNode(tree_conf, page=3)
-
-
-@pytest.fixture
-def clean_file():
-    if os.path.isfile(filename):
-        os.unlink(filename)
-    yield
-    if os.path.isfile(filename):
-        os.unlink(filename)
 
 
 def test_memory_node():
@@ -49,16 +42,14 @@ def test_memory_next_available_page():
         assert mem.next_available_page == i
 
 
-def test_file_memory_node(clean_file):
+def test_file_memory_node():
     mem = FileMemory(filename, tree_conf)
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ReachedEndOfFile):
         mem.get_node(3)
 
     mem.set_node(node)
-    rv = mem.get_node(3)
-    print(node, rv)
-    assert node == rv
+    assert node == mem.get_node(3)
 
     mem.close()
 
@@ -77,19 +68,6 @@ def test_file_memory_next_available_page(clean_file):
         assert mem.next_available_page == i
 
 
-@mock.patch('bplustree.memory.os.fsync')
-def test_file_memory_fsync(mock_fsync, clean_file):
-    mem = FileMemory(filename, tree_conf, fsync=Fsync.NEVER)
-    mem._write_page(0, bytes(tree_conf.page_size))
-    mem.close()
-    mock_fsync.assert_not_called()
-
-    mem = FileMemory(filename, tree_conf, fsync=Fsync.ALWAYS)
-    mem._write_page(0, bytes(tree_conf.page_size))
-    mem.close()
-    mock_fsync.assert_called_with(mock.ANY)
-
-
 def test_open_file_in_dir(clean_file):
     with pytest.raises(ValueError):
         open_file_in_dir('/foo/bar/does/not/exist')
@@ -101,3 +79,51 @@ def test_open_file_in_dir(clean_file):
         assert isinstance(dir_fd, int)
         file_fd.close()
         os.close(dir_fd)
+
+
+def test_wal_create_reopen_empty():
+    WAL(filename, 64)
+
+    wal = WAL(filename, 64)
+    assert wal._page_size == 64
+
+
+def test_wal_create_reopen_uncommitted():
+    wal = WAL(filename, 64)
+    wal.set_page(1, b'1' * 64)
+    wal.commit()
+    wal.set_page(2, b'2' * 64)
+    assert wal.get_page(1) == b'1' * 64
+    assert wal.get_page(2) == b'2' * 64
+
+    wal = WAL(filename, 64)
+    assert wal.get_page(1) == b'1' * 64
+    assert wal.get_page(2) is None
+
+
+def test_wal_rollback():
+    wal = WAL(filename, 64)
+    wal.set_page(1, b'1' * 64)
+    wal.commit()
+    wal.set_page(2, b'2' * 64)
+    assert wal.get_page(1) == b'1' * 64
+    assert wal.get_page(2) == b'2' * 64
+
+    wal.rollback()
+    assert wal.get_page(1) == b'1' * 64
+    assert wal.get_page(2) is None
+
+
+def test_wal_checkpoint():
+    wal = WAL(filename, 64)
+    wal.set_page(1, b'1' * 64)
+    wal.commit()
+    wal.set_page(2, b'2' * 64)
+
+    rv = wal.checkpoint()
+    assert list(rv) == [(1, b'1' * 64)]
+
+    with pytest.raises(ValueError):
+        wal.set_page(3, b'3' * 64)
+
+    assert os.path.isfile(filename + '-wal') is False

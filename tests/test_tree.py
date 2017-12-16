@@ -13,15 +13,6 @@ from .conftest import filename
 
 
 @pytest.fixture
-def clean_file():
-    if os.path.isfile(filename):
-        os.unlink(filename)
-    yield
-    if os.path.isfile(filename):
-        os.unlink(filename)
-
-
-@pytest.fixture
 def b():
     b = BPlusTree()
     yield b
