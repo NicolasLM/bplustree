@@ -108,8 +108,12 @@ class FileMemory(Memory):
     def __init__(self, filename: str, tree_conf: TreeConf):
         super().__init__()
         self._fd, self._dir_fd = open_file_in_dir(filename)
-        self._wal = WAL(filename, tree_conf.page_size)
         self._tree_conf = tree_conf
+
+        self._wal = WAL(filename, tree_conf.page_size)
+        if self._wal.needs_recovery:
+            self.perform_checkpoint()
+            self._wal = WAL(filename, tree_conf.page_size)
 
         # Get the next available page
         self._fd.seek(0, io.SEEK_END)
@@ -170,11 +174,13 @@ class FileMemory(Memory):
         self._write_page_in_tree(0, data)
 
     def close(self):
+        self._fd.close()
+        os.close(self._dir_fd)
+
+    def perform_checkpoint(self):
         for page, page_data in self._wal.checkpoint():
             self._write_page_in_tree(page, page_data)
         fsync_file_and_dir(self._fd.fileno(), self._dir_fd)
-        self._fd.close()
-        os.close(self._dir_fd)
 
     def _read_page(self, page: int) -> bytes:
         start = page * self._tree_conf.page_size
@@ -214,12 +220,15 @@ class WAL:
         self._fd.seek(0, io.SEEK_END)
         if self._fd.tell() == 0:
             self._create_header()
+            self.needs_recovery = False
         else:
             logger.warning('Found an existing WAL file, '
                            'the B+Tree was not closed properly')
+            self.needs_recovery = True
             self._load_wal()
 
     def checkpoint(self):
+        """Transfer the modified data back to the tree and close the WAL."""
         if self._not_committed_pages:
             logger.warning('Closing WAL with uncommitted data, discarding it')
 
