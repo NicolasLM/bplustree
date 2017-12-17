@@ -53,6 +53,20 @@ def test_partial_constructors(b):
     assert record._tree_conf == b._tree_conf
 
 
+def test_insert_setitem_tree(b):
+    b.insert(1, b'foo')
+
+    with pytest.raises(ValueError):
+        b.insert(1, b'bar')
+    assert b.get(1) == b'foo'
+
+    b.insert(1, b'baz', replace=True)
+    assert b.get(1) == b'baz'
+
+    b[1] = b'foo'
+    assert b.get(1) == b'foo'
+
+
 def test_get_tree(b):
     b.insert(1, b'foo')
     assert b.get(1) == b'foo'
@@ -221,7 +235,7 @@ def test_left_record_node_in_tree():
     assert isinstance(b._left_record_node, LonelyRootNode)
     b.insert(1, b'1')
     b.insert(2, b'2')
-    b.insert(2, b'2')
+    b.insert(3, b'3')
     assert isinstance(b._left_record_node, LeafNode)
     b.close()
 

@@ -55,12 +55,34 @@ class BPlusTree:
         with self._mem.write_transaction:
             self._mem.perform_checkpoint(reopen_wal=True)
 
-    def insert(self, key, value: bytes):
+    def insert(self, key, value: bytes, replace=False):
+        """Insert a value in the tree.
+
+        :param key: The key at which the value will be recorded, must be of the
+                    same type used by the Serializer
+        :param value: The value to record in bytes
+        :param replace: If True, already existing value will be overridden,
+                        otherwise a ValueError is raised.
+        """
         if not isinstance(value, bytes):
             ValueError('Values must be bytes objects')
 
         with self._mem.write_transaction:
             node = self._search_in_tree(key, self._root_node)
+
+            # Check if an entry with the key already exist
+            try:
+                existing_entry = node.get_entry(key)
+            except ValueError:
+                pass
+            else:
+                if not replace:
+                    raise ValueError('Key {} already exists'.format(key))
+
+                existing_entry.value = value
+                self._mem.set_node(node)
+                return
+
             if node.can_add_entry:
                 node.insert_entry(self.Record(key, value))
                 self._mem.set_node(node)
@@ -83,6 +105,9 @@ class BPlusTree:
         with self._mem.read_transaction:
             o = object()
             return False if self.get(item, default=o) is o else True
+
+    def __setitem__(self, key, value):
+        self.insert(key, value, replace=True)
 
     def __getitem__(self, item):
         with self._mem.read_transaction:

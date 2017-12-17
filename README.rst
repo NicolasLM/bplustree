@@ -27,16 +27,12 @@ Create a B+tree index stored on a file and use it with:
 
     >>> from bplustree import BPlusTree
     >>> tree = BPlusTree('/tmp/bplustree.db', order=50)
-    >>> tree.insert(1, b'foo')
-    >>> tree.insert(2, b'bar')
-    >>> tree.get(1)
+    >>> tree[1] = b'foo'
+    >>> tree[2] = b'bar'
+    >>> tree[1]
     b'foo'
+    >>> tree.get(3)
     >>> tree.close()
-    >>> for i in tree:
-    ...     print(i)
-    ...
-    1
-    2
 
 Keys and values
 ---------------
