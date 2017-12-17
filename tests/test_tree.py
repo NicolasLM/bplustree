@@ -60,6 +60,19 @@ def test_get_tree(b):
     assert b.get(2, 'bar') == 'bar'
 
 
+def test_getitem_tree(b):
+    b.insert(1, b'foo')
+    b.insert(2, b'bar')
+    b.insert(5, b'baz')
+
+    assert b[1] == b'foo'
+    with pytest.raises(KeyError):
+        _ = b[4]
+
+    assert b[1:3] == {1: b'foo', 2: b'bar'}
+    assert b[0:10] == {1: b'foo', 2: b'bar', 5: b'baz'}
+
+
 def test_contains_tree(b):
     b.insert(1, b'foo')
     assert 1 in b
@@ -113,11 +126,17 @@ def test_iter_keys_values_items_tree(b):
         assert i == previous + 1
         previous += 1
 
+    # Test slice .keys()
+    assert list(b.keys(slice(10, 13))) == [10, 11, 12]
+
     # Test .values()
     previous = 0
     for i in b.values():
         assert int(i.decode()) == previous + 1
         previous += 1
+
+    # Test slice .values()
+    assert list(b.values(slice(10, 13))) == [b'10', b'11', b'12']
 
     # Test .items()
     previous = 0
@@ -125,6 +144,10 @@ def test_iter_keys_values_items_tree(b):
         expected = previous + 1
         assert (k, int(v.decode())) == (expected, expected)
         previous += 1
+
+    # Test slice .items()
+    expected = [(10, b'10'), (11, b'11'), (12, b'12')]
+    assert list(b.items(slice(10, 13))) == expected
 
 
 def test_iter_slice(b):

@@ -85,10 +85,22 @@ class BPlusTree:
             return False if self.get(item, default=o) is o else True
 
     def __getitem__(self, item):
-        if isinstance(item, slice):
-            raise NotImplemented()
         with self._mem.read_transaction:
-            return self.get(item)
+
+            if isinstance(item, slice):
+                # Returning a dict is the most sensible thing to do
+                # as a method cannot return a sometimes a generator
+                # and sometimes a normal value
+                rv = dict()
+                for record in self._iter_slice(item):
+                    rv[record.key] = record.value
+                return rv
+
+            else:
+                rv = self.get(item)
+                if rv is None:
+                    raise KeyError(item)
+                return rv
 
     def __len__(self):
         with self._mem.read_transaction:
@@ -116,21 +128,27 @@ class BPlusTree:
             )
             return num_leaf_nodes * num_records_per_leaf_node
 
-    def __iter__(self):
+    def __iter__(self, slice_: Optional[slice]=None):
+        if not slice_:
+            slice_ = slice(None)
         with self._mem.read_transaction:
-            for record in self._iter_slice(slice(None)):
+            for record in self._iter_slice(slice_):
                 yield record.key
 
     keys = __iter__
 
-    def items(self) -> Iterator[tuple]:
+    def items(self, slice_: Optional[slice]=None) -> Iterator[tuple]:
+        if not slice_:
+            slice_ = slice(None)
         with self._mem.read_transaction:
-            for record in self._iter_slice(slice(None)):
+            for record in self._iter_slice(slice_):
                 yield record.key, record.value
 
-    def values(self) -> Iterator[bytes]:
+    def values(self, slice_: Optional[slice]=None) -> Iterator[bytes]:
+        if not slice_:
+            slice_ = slice(None)
         with self._mem.read_transaction:
-            for record in self._iter_slice(slice(None)):
+            for record in self._iter_slice(slice_):
                 yield record.value
 
     def __bool__(self):

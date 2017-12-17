@@ -31,12 +31,12 @@ Create a B+tree index stored on a file and use it with:
     >>> tree.insert(2, b'bar')
     >>> tree.get(1)
     b'foo'
+    >>> tree.close()
     >>> for i in tree:
     ...     print(i)
     ...
     1
     2
-    >>> tree.close()
 
 Keys and values
 ---------------
@@ -55,6 +55,45 @@ serializers for the most common types are provided. For example to index UUIDs:
 
 Values on the other hand are always bytes. Like keys, the limit on their length
 can be set with ``value_size=128`` when building the tree.
+
+Iterating
+---------
+
+Since keys are kept in order, it is very efficient to retrieve elements in
+order:
+
+.. code:: python
+
+    >>> for i in tree:
+    ...     print(i)
+    ...
+    1
+    2
+    >>> for key, value in tree.items():
+    ...     print(key, value)
+    ...
+    1 b'foo'
+    2 b'bar'
+
+It is also possible to iterate over a subset of the tree by giving a Python
+slice:
+
+.. code:: python
+
+    >>> for key, value in tree.items(slice(start=0, stop=10):
+    ...     print(key, value)
+    ...
+    1 b'foo'
+    2 b'bar'
+
+Both methods use a generator so they don't require loading the whole content
+in memory, but copying a slice of the tree into a dict is also possible:
+
+.. code:: python
+
+    >>> tree[0:10]
+    {1: b'foo', 2: b'bar'}
+
 
 Concurrency
 -----------
