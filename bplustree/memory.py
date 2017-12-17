@@ -4,6 +4,7 @@ from logging import getLogger
 import os
 from typing import Union, Tuple, Optional
 
+import cachetools
 import rwlock
 
 from .node import Node
@@ -70,10 +71,13 @@ def read_from_file(file_fd: io.FileIO, start: int, stop: int) -> bytes:
 
 class FileMemory:
 
-    def __init__(self, filename: str, tree_conf: TreeConf):
+    def __init__(self, filename: str, tree_conf: TreeConf,
+                 cache_size: int=512):
         self._filename = filename
         self._tree_conf = tree_conf
         self._lock = rwlock.RWLock()
+        self._cache = cachetools.LRUCache(maxsize=cache_size)
+
         self._fd, self._dir_fd = open_file_in_dir(filename)
 
         self._wal = WAL(filename, tree_conf.page_size)
@@ -86,13 +90,32 @@ class FileMemory:
         self.last_page = int(last_byte / self._tree_conf.page_size)
 
     def get_node(self, page: int):
+        """Get a node from storage.
+
+        The cache is not there to prevent hitting the disk, the OS is already
+        very good at it. It is there to avoid paying the price of deserializing
+        the data to create the Node object and its entry. This is a very
+        expensive operation in Python.
+
+        Since we have at most a single writer we can write to cache on
+        `set_node` if we invalidate the cache when a transaction is rolled
+        back.
+        """
+        node = self._cache.get(page)
+        if node is not None:
+            return node
+
         data = self._wal.get_page(page)
         if not data:
             data = self._read_page(page)
-        return Node.from_page_data(self._tree_conf, data=data, page=page)
+
+        node = Node.from_page_data(self._tree_conf, data=data, page=page)
+        self._cache[node.page] = node
+        return node
 
     def set_node(self, node: Node):
         self._wal.set_page(node.page, node.dump())
+        self._cache[node.page] = node
 
     @property
     def read_transaction(self):
@@ -117,7 +140,11 @@ class FileMemory:
 
             def __exit__(self2, exc_type, exc_val, exc_tb):
                 if exc_type:
+                    # When an error happens in the middle of a write
+                    # transaction we must roll it back and clear the cache
+                    # because the writer may have partially modified the Nodes
                     self._wal.rollback()
+                    self._cache.clear()
                 else:
                     self._wal.commit()
                 self._lock.writer_lock.release()

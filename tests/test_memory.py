@@ -84,6 +84,7 @@ def test_file_memory_write_transaction():
 def test_file_memory_write_transaction_error():
     mem = FileMemory(filename, tree_conf)
     mem._lock = mock.Mock()
+    mem._cache[424242] = node
 
     try:
         with mem.write_transaction:
@@ -98,6 +99,7 @@ def test_file_memory_write_transaction_error():
     assert mem._wal._not_committed_pages == {}
     assert mem._wal._committed_pages == {}
     assert mem._lock.writer_lock.release.call_count == 1
+    assert mem._cache.get(424242) is None
 
 
 def test_wal_create_reopen_empty():

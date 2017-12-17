@@ -41,7 +41,8 @@ setup(
 
     packages=find_packages(include=('bplustree', 'bplustree.*')),
     install_requires=[
-        'rwlock'
+        'rwlock',
+        'cachetools'
     ],
 
     extras_require={
