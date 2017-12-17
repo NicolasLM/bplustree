@@ -71,14 +71,14 @@ def read_from_file(file_fd: io.FileIO, start: int, stop: int) -> bytes:
 class FileMemory:
 
     def __init__(self, filename: str, tree_conf: TreeConf):
+        self._filename = filename
+        self._tree_conf = tree_conf
         self._lock = rwlock.RWLock()
         self._fd, self._dir_fd = open_file_in_dir(filename)
-        self._tree_conf = tree_conf
 
         self._wal = WAL(filename, tree_conf.page_size)
         if self._wal.needs_recovery:
-            self.perform_checkpoint()
-            self._wal = WAL(filename, tree_conf.page_size)
+            self.perform_checkpoint(reopen_wal=True)
 
         # Get the next available page
         self._fd.seek(0, io.SEEK_END)
@@ -97,35 +97,30 @@ class FileMemory:
     @property
     def read_transaction(self):
 
-        lock = self._lock
-
         class ReadTransaction:
 
-            def __enter__(self):
-                lock.reader_lock.acquire()
+            def __enter__(self2):
+                self._lock.reader_lock.acquire()
 
-            def __exit__(self, exc_type, exc_val, exc_tb):
-                lock.reader_lock.release()
+            def __exit__(self2, exc_type, exc_val, exc_tb):
+                self._lock.reader_lock.release()
 
         return ReadTransaction()
 
     @property
     def write_transaction(self):
 
-        lock = self._lock
-        wal = self._wal
-
         class WriteTransaction:
 
-            def __enter__(self):
-                lock.writer_lock.acquire()
+            def __enter__(self2):
+                self._lock.writer_lock.acquire()
 
-            def __exit__(self, exc_type, exc_val, exc_tb):
+            def __exit__(self2, exc_type, exc_val, exc_tb):
                 if exc_type:
-                    wal.rollback()
+                    self._wal.rollback()
                 else:
-                    wal.commit()
-                lock.writer_lock.release()
+                    self._wal.commit()
+                self._lock.writer_lock.release()
 
         return WriteTransaction()
 
@@ -181,10 +176,12 @@ class FileMemory:
         self._fd.close()
         os.close(self._dir_fd)
 
-    def perform_checkpoint(self):
+    def perform_checkpoint(self, reopen_wal=False):
         for page, page_data in self._wal.checkpoint():
             self._write_page_in_tree(page, page_data)
         fsync_file_and_dir(self._fd.fileno(), self._dir_fd)
+        if reopen_wal:
+            self._wal = WAL(self._filename, self._tree_conf.page_size)
 
     def _read_page(self, page: int) -> bytes:
         start = page * self._tree_conf.page_size

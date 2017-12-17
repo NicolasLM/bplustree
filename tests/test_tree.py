@@ -181,6 +181,17 @@ def test_iter_slice(b):
     b2.close()
 
 
+def test_checkpoint(b):
+    b.checkpoint()
+    b.insert(1, b'foo')
+    assert not b._mem._wal._not_committed_pages
+    assert b._mem._wal._committed_pages
+
+    b.checkpoint()
+    assert not b._mem._wal._not_committed_pages
+    assert not b._mem._wal._committed_pages
+
+
 def test_left_record_node_in_tree():
     b = BPlusTree(filename, order=3)
     assert b._left_record_node == b._root_node

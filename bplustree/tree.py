@@ -39,6 +39,10 @@ class BPlusTree:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
+    def checkpoint(self):
+        with self._mem.write_transaction:
+            self._mem.perform_checkpoint(reopen_wal=True)
+
     def insert(self, key, value: bytes):
         if not isinstance(value, bytes):
             ValueError('Values must be bytes objects')
@@ -130,7 +134,8 @@ class BPlusTree:
 
     def _initialize_empty_tree(self):
         self._root_node_page = self._mem.next_available_page
-        self._mem.set_node(self.LonelyRootNode(page=self._root_node_page))
+        with self._mem.write_transaction:
+            self._mem.set_node(self.LonelyRootNode(page=self._root_node_page))
         self._mem.set_metadata(self._root_node_page, self._tree_conf)
 
     def _create_partials(self):
