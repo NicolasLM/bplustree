@@ -173,10 +173,12 @@ class FileMemory:
         self._write_page_in_tree(0, data)
 
     def close(self):
+        self.perform_checkpoint()
         self._fd.close()
         os.close(self._dir_fd)
 
     def perform_checkpoint(self, reopen_wal=False):
+        logger.info('Performing checkpoint of %s', self._filename)
         for page, page_data in self._wal.checkpoint():
             self._write_page_in_tree(page, page_data)
         fsync_file_and_dir(self._fd.fileno(), self._dir_fd)
@@ -332,10 +334,14 @@ class WAL:
         self._add_frame(FrameType.PAGE, page, page_data)
 
     def commit(self):
-        self._add_frame(FrameType.COMMIT)
+        # Commit is a no-op when there is no uncommitted pages
+        if self._not_committed_pages:
+            self._add_frame(FrameType.COMMIT)
 
     def rollback(self):
-        self._add_frame(FrameType.ROLLBACK)
+        # Rollback is a no-op when there is no uncommitted pages
+        if self._not_committed_pages:
+            self._add_frame(FrameType.ROLLBACK)
 
     def __repr__(self):
         return '<WAL: {}>'.format(self.filename)

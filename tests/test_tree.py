@@ -167,8 +167,10 @@ def test_iter_slice(b):
     iter = b._iter_slice(slice(-2, 17))
     assert next(iter).key == 0
 
+    b.close()
+
     # Contains from 10, 20, 30 .. 200
-    b2 = BPlusTree(filename, order=5)
+    b = BPlusTree(filename, order=5)
     for i in range(10, 201, 10):
         b.insert(i, str(i).encode())
 
@@ -177,8 +179,6 @@ def test_iter_slice(b):
     assert next(iter).key == 80
     with pytest.raises(StopIteration):
         next(iter)
-
-    b2.close()
 
 
 def test_checkpoint(b):

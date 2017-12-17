@@ -1,4 +1,5 @@
 from functools import partial
+from logging import getLogger
 from typing import Optional, Union, Iterator
 
 from . import utils
@@ -7,6 +8,9 @@ from .entry import Record, Reference
 from .memory import FileMemory
 from .node import Node, LonelyRootNode, RootNode, InternalNode, LeafNode
 from .serializer import Serializer, IntSerializer
+
+
+logger = getLogger(__name__)
 
 
 class BPlusTree:
@@ -29,9 +33,16 @@ class BPlusTree:
             self._initialize_empty_tree()
         else:
             self._root_node_page, self._tree_conf = metadata
+        self._is_open = True
 
     def close(self):
-        self._mem.close()
+        with self._mem.write_transaction:
+            if not self._is_open:
+                logger.info('Tree is already closed')
+                return
+
+            self._mem.close()
+            self._is_open = False
 
     def __enter__(self):
         return self
