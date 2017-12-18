@@ -24,6 +24,11 @@ def test_record_str_serialization():
     assert r1.value == r2.value
 
 
+def test_record_repr():
+    r1 = Record(tree_conf, 42, b'foo')
+    assert repr(r1) == "<Record: 42 value=b'foo'...>"
+
+
 def test_reference_int_serialization():
     r1 = Reference(tree_conf, 42, 1, 2)
     data = r1.dump()
@@ -43,3 +48,8 @@ def test_reference_str_serialization():
     assert r1 == r2
     assert r1.before == r2.before
     assert r1.after == r2.after
+
+
+def test_reference_repr():
+    r1 = Reference(tree_conf, 42, 1, 2)
+    assert repr(r1) == '<Reference: key=42 before=1 after=2>'

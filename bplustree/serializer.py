@@ -14,6 +14,9 @@ class Serializer(ABC):
     def deserialize(self, data: bytes) -> object:
         pass
 
+    def __repr__(self):
+        return '{}()'.format(self.__class__.__name__)
+
 
 class IntSerializer(Serializer):
 

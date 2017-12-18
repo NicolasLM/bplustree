@@ -102,6 +102,12 @@ def test_file_memory_write_transaction_error():
     assert mem._cache.get(424242) is None
 
 
+def test_file_memory_repr():
+    mem = FileMemory(filename, tree_conf)
+    assert repr(mem) == '<FileMemory: {}>'.format(filename)
+    mem.close()
+
+
 def test_wal_create_reopen_empty():
     WAL(filename, 64)
 
@@ -148,3 +154,8 @@ def test_wal_checkpoint():
         wal.set_page(3, b'3' * 64)
 
     assert os.path.isfile(filename + '-wal') is False
+
+
+def test_wal_repr():
+    wal = WAL(filename, 64)
+    assert repr(wal) == '<WAL: {}-wal>'.format(filename)

@@ -227,6 +227,9 @@ class FileMemory:
         self._fd.seek(page * self._tree_conf.page_size)
         write_to_file(self._fd, self._dir_fd, data)
 
+    def __repr__(self):
+        return '<FileMemory: {}>'.format(self._filename)
+
 
 class FrameType(enum.Enum):
     PAGE = 1

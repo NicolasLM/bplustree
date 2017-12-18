@@ -10,11 +10,11 @@ class Entry(abc.ABC):
 
     @abc.abstractmethod
     def load(self, data: bytes):
-        pass
+        """Deserialize data into an object."""
 
     @abc.abstractmethod
     def dump(self) -> bytes:
-        pass
+        """Serialize object to data."""
 
     def __eq__(self, other):
         return self.key == other.key
@@ -93,8 +93,8 @@ class Record(Entry):
         return data
 
     def __repr__(self):
-        return '<Record: {} value={}>'.format(
-            self.key, self.value
+        return '<Record: {} value={}...>'.format(
+            self.key, self.value[0:16]
         )
 
 
