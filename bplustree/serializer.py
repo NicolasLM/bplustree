@@ -1,24 +1,28 @@
-from abc import ABC, abstractmethod
+import abc
 from uuid import UUID
 
 from .const import ENDIAN
 
 
-class Serializer(ABC):
+class Serializer(metaclass=abc.ABCMeta):
 
-    @abstractmethod
+    __slots__ = []
+
+    @abc.abstractmethod
     def serialize(self, obj: object, key_size: int) -> bytes:
-        pass
+        """Serialize a key to bytes."""
 
-    @abstractmethod
+    @abc.abstractmethod
     def deserialize(self, data: bytes) -> object:
-        pass
+        """Create a key object from bytes."""
 
     def __repr__(self):
         return '{}()'.format(self.__class__.__name__)
 
 
 class IntSerializer(Serializer):
+
+    __slots__ = []
 
     def serialize(self, obj: int, key_size: int) -> bytes:
         return obj.to_bytes(key_size, ENDIAN)
@@ -28,6 +32,8 @@ class IntSerializer(Serializer):
 
 
 class StrSerializer(Serializer):
+
+    __slots__ = []
 
     def serialize(self, obj: str, key_size: int) -> bytes:
         rv = obj.encode(encoding='utf-8')
@@ -39,6 +45,8 @@ class StrSerializer(Serializer):
 
 
 class UUIDSerializer(Serializer):
+
+    __slots__ = []
 
     def serialize(self, obj: UUID, key_size: int) -> bytes:
         return obj.bytes

@@ -1,3 +1,5 @@
+import pytest
+
 from bplustree.entry import Record, Reference
 from bplustree.const import TreeConf
 from bplustree.serializer import IntSerializer, StrSerializer
@@ -27,6 +29,12 @@ def test_record_str_serialization():
 def test_record_repr():
     r1 = Record(tree_conf, 42, b'foo')
     assert repr(r1) == "<Record: 42 value=b'foo'...>"
+
+
+def test_record_slots():
+    r1 = Record(tree_conf, 42, b'foo')
+    with pytest.raises(AttributeError):
+        r1.foo = True
 
 
 def test_reference_int_serialization():

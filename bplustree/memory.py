@@ -71,6 +71,9 @@ def read_from_file(file_fd: io.FileIO, start: int, stop: int) -> bytes:
 
 class FileMemory:
 
+    __slots__ = ['_filename', '_tree_conf', '_lock', '_cache', '_fd',
+                 '_dir_fd', '_wal', 'last_page']
+
     def __init__(self, filename: str, tree_conf: TreeConf,
                  cache_size: int=512):
         self._filename = filename
@@ -238,6 +241,9 @@ class FrameType(enum.Enum):
 
 
 class WAL:
+
+    __slots__ = ['filename', '_fd', '_dir_fd', '_page_size',
+                 '_committed_pages', '_not_committed_pages', 'needs_recovery']
 
     FRAME_HEADER_LENGTH = (
         FRAME_TYPE_BYTES + PAGE_REFERENCE_BYTES

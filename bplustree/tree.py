@@ -15,6 +15,10 @@ logger = getLogger(__name__)
 
 class BPlusTree:
 
+    __slots__ = ['_filename', '_tree_conf', '_mem', '_root_node_page',
+                 '_is_open', 'LonelyRootNode', 'RootNode', 'InternalNode',
+                 'LeafNode', 'Record', 'Reference']
+
     # ######################### Public API ################################
 
     def __init__(self, filename: str, page_size: int= 4096, order: int=4,

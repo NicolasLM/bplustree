@@ -74,6 +74,12 @@ def test_root_node_serialization():
     assert n1.next_page is n2.next_page is None
 
 
+def test_node_slots():
+    n1 = RootNode(tree_conf)
+    with pytest.raises(AttributeError):
+        n1.foo = True
+
+
 def test_get_node_from_page_data():
     data = (2).to_bytes(1, ENDIAN) + bytes(4096 - 1)
     tree_conf = TreeConf(4096, 7, 16, 16, IntSerializer())

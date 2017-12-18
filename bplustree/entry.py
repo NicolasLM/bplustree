@@ -4,9 +4,9 @@ from .const import (ENDIAN, PAGE_REFERENCE_BYTES,
                     USED_KEY_LENGTH_BYTES, USED_VALUE_LENGTH_BYTES, TreeConf)
 
 
-class Entry(abc.ABC):
+class Entry(metaclass=abc.ABCMeta):
 
-    key = None
+    __slots__ = []
 
     @abc.abstractmethod
     def load(self, data: bytes):
@@ -34,6 +34,8 @@ class Entry(abc.ABC):
 
 class Record(Entry):
     """A container for the actual data the tree stores."""
+
+    __slots__ = ['_tree_conf', 'key', 'value', 'length']
 
     def __init__(self, tree_conf: TreeConf, key=None,
                  value: bytes=None, data: bytes=None):
@@ -100,6 +102,8 @@ class Record(Entry):
 
 class Reference(Entry):
     """A container for a reference to other nodes."""
+
+    __slots__ = ['_tree_conf', 'length', 'key', 'before', 'after']
 
     def __init__(self, tree_conf: TreeConf, key=None, before=None, after=None,
                  data: bytes=None):

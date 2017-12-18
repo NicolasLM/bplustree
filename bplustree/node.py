@@ -8,7 +8,9 @@ from .const import (ENDIAN, NODE_TYPE_BYTES, USED_PAGE_LENGTH_BYTES,
 from .entry import Entry, Record, Reference
 
 
-class Node(abc.ABC):
+class Node(metaclass=abc.ABCMeta):
+
+    __slots__ = ['_tree_conf', 'entries', 'page', 'parent', 'next_page']
 
     # Attributes to redefine in inherited classes
     _node_type_int = 0
@@ -92,10 +94,10 @@ class Node(abc.ABC):
     def biggest_entry(self):
         return self.entries[-1]
 
-    @abc.abstractproperty
     @property
+    @abc.abstractmethod
     def num_children(self) -> int:
-        pass
+        """Number of entries or other nodes connected to the node."""
 
     def pop_smallest(self) -> Entry:
         """Remove and return the smallest entry."""
@@ -162,6 +164,8 @@ class Node(abc.ABC):
 
 class RecordNode(Node):
 
+    __slots__ = ['_entry_class']
+
     def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None, next_page: int=None):
         self._entry_class = Record
@@ -177,6 +181,8 @@ class LonelyRootNode(RecordNode):
 
     It is an exception for when there is only a single node in the tree.
     """
+
+    __slots__ = ['_node_type_int', 'min_children', 'max_children']
 
     def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None):
@@ -194,6 +200,8 @@ class LonelyRootNode(RecordNode):
 class LeafNode(RecordNode):
     """Node that holds the actual records within the tree."""
 
+    __slots__ = ['_node_type_int', 'min_children', 'max_children']
+
     def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None, next_page: int=None):
         self._node_type_int = 4
@@ -203,6 +211,8 @@ class LeafNode(RecordNode):
 
 
 class ReferenceNode(Node):
+
+    __slots__ = ['_entry_class']
 
     def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None):
@@ -234,6 +244,8 @@ class ReferenceNode(Node):
 class RootNode(ReferenceNode):
     """The first node at the top of the tree."""
 
+    __slots__ = ['_node_type_int', 'min_children', 'max_children']
+
     def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None):
         self._node_type_int = 2
@@ -249,6 +261,8 @@ class RootNode(ReferenceNode):
 
 class InternalNode(ReferenceNode):
     """Node that only holds references to other Internal nodes or Leaves."""
+
+    __slots__ = ['_node_type_int', 'min_children', 'max_children']
 
     def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
                  page: int=None, parent: 'Node'=None):
