@@ -1,5 +1,6 @@
 import io
 import os
+import platform
 from unittest import mock
 
 import pytest
@@ -49,10 +50,23 @@ def test_open_file_in_dir():
     # Create file and re-open
     for _ in range(2):
         file_fd, dir_fd = open_file_in_dir(filename)
+
         assert isinstance(file_fd, io.FileIO)
-        assert isinstance(dir_fd, int)
         file_fd.close()
-        os.close(dir_fd)
+
+        if platform.system() == 'Windows':
+            assert dir_fd is None
+        else:
+            assert isinstance(dir_fd, int)
+            os.close(dir_fd)
+
+
+@mock.patch('bplustree.memory.platform.system', return_value='Windows')
+def test_open_file_in_dir_windows(_):
+    file_fd, dir_fd = open_file_in_dir(filename)
+    assert isinstance(file_fd, io.FileIO)
+    file_fd.close()
+    assert dir_fd is None
 
 
 def test_file_memory_write_transaction():

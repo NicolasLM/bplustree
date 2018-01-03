@@ -2,6 +2,7 @@ import enum
 import io
 from logging import getLogger
 import os
+import platform
 from typing import Union, Tuple, Optional
 
 import cachetools
@@ -19,12 +20,14 @@ class ReachedEndOfFile(Exception):
     """Read a file until its end."""
 
 
-def open_file_in_dir(path: str) -> Tuple[io.FileIO, int]:
+def open_file_in_dir(path: str) -> Tuple[io.FileIO, Optional[int]]:
     """Open a file and its directory.
 
     The file is opened in binary mode and created if it does not exist.
     Both file descriptors must be closed after use to prevent them from
     leaking.
+
+    On Windows, the directory is not opened, as it is useless.
     """
     directory = os.path.dirname(path)
     if not os.path.isdir(directory):
@@ -35,12 +38,18 @@ def open_file_in_dir(path: str) -> Tuple[io.FileIO, int]:
     else:
         file_fd = open(path, mode='r+b', buffering=0)
 
-    dir_fd = os.open(directory, os.O_RDONLY)
+    if platform.system() == 'Windows':
+        # Opening a directory is not possible on Windows, but that is not
+        # a problem since Windows does not need to fsync the directory in
+        # order to persist metadata
+        dir_fd = None
+    else:
+        dir_fd = os.open(directory, os.O_RDONLY)
 
     return file_fd, dir_fd
 
 
-def write_to_file(file_fd: io.FileIO, dir_fileno: int,
+def write_to_file(file_fd: io.FileIO, dir_fileno: Optional[int],
                   data: bytes, fsync: bool=True):
     length_to_write = len(data)
     written = 0
@@ -50,9 +59,10 @@ def write_to_file(file_fd: io.FileIO, dir_fileno: int,
         fsync_file_and_dir(file_fd.fileno(), dir_fileno)
 
 
-def fsync_file_and_dir(file_fileno: int, dir_fileno: int):
+def fsync_file_and_dir(file_fileno: int, dir_fileno: Optional[int]):
     os.fsync(file_fileno)
-    os.fsync(dir_fileno)
+    if dir_fileno is not None:
+        os.fsync(dir_fileno)
 
 
 def read_from_file(file_fd: io.FileIO, start: int, stop: int) -> bytes:
@@ -205,7 +215,8 @@ class FileMemory:
     def close(self):
         self.perform_checkpoint()
         self._fd.close()
-        os.close(self._dir_fd)
+        if self._dir_fd is not None:
+            os.close(self._dir_fd)
 
     def perform_checkpoint(self, reopen_wal=False):
         logger.info('Performing checkpoint of %s', self._filename)
@@ -283,8 +294,9 @@ class WAL:
 
         self._fd.close()
         os.unlink(self.filename)
-        os.fsync(self._dir_fd)
-        os.close(self._dir_fd)
+        if self._dir_fd is not None:
+            os.fsync(self._dir_fd)
+            os.close(self._dir_fd)
 
     def _create_header(self):
         data = self._page_size.to_bytes(OTHERS_BYTES, ENDIAN)
