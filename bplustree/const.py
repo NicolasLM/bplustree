@@ -1,6 +1,6 @@
 from collections import namedtuple
 
-VERSION = '0.0.2.dev1'
+VERSION = '0.0.2'
 
 # Endianess for storing numbers
 ENDIAN = 'little'
