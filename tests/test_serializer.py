@@ -1,8 +1,12 @@
+from datetime import datetime, timezone
+from unittest import mock
 import uuid
 
 import pytest
 
-from bplustree.serializer import IntSerializer, StrSerializer, UUIDSerializer
+from bplustree.serializer import (
+    IntSerializer, StrSerializer, UUIDSerializer, DatetimeUTCSerializer
+)
 
 
 def test_int_serializer():
@@ -31,3 +35,18 @@ def test_uuid_serializer():
     assert s.serialize(id_, 16) == id_.bytes
     assert s.deserialize(id_.bytes) == id_
     assert repr(s) == 'UUIDSerializer()'
+
+
+def test_datetime_utc_serializer():
+    s = DatetimeUTCSerializer()
+    dt = datetime(2018, 1, 6, 21, 42, 2, 424739, tzinfo=timezone.utc)
+    serialized = s.serialize(dt, 8)
+    assert serialized == b'W\xe2\x02\xd6\xa0\x99\xec\x8c'
+    assert s.deserialize(serialized) == dt
+    assert repr(s) == 'DatetimeUTCSerializer()'
+
+
+@mock.patch.dict('bplustree.serializer.__dict__', {'temporenc': None})
+def test_datetime_utc_serializer_no_temporenc():
+    with pytest.raises(RuntimeError):
+        DatetimeUTCSerializer()

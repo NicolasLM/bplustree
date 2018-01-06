@@ -5,7 +5,7 @@ python:
     - "3.6"
 
 install:
-    - pip install -e .[tests]
+    - pip install -e .[tests,datetime]
 
 script:
     - pytest -v --cov=bplustree tests/

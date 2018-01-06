@@ -1,3 +1,4 @@
+from datetime import datetime, timezone, timedelta
 import itertools
 from unittest import mock
 import uuid
@@ -7,7 +8,9 @@ import pytest
 from bplustree.memory import FileMemory
 from bplustree.node import LonelyRootNode, LeafNode
 from bplustree.tree import BPlusTree
-from bplustree.serializer import IntSerializer, StrSerializer, UUIDSerializer
+from bplustree.serializer import (
+    IntSerializer, StrSerializer, UUIDSerializer, DatetimeUTCSerializer
+)
 from .conftest import filename
 
 
@@ -295,4 +298,16 @@ def test_insert_split_in_tree_uuid():
         16,
         40,
         UUIDSerializer
+    )
+
+
+def test_insert_split_in_tree_datetime_utc():
+    dt = datetime(2018, 1, 6, 21, 42, 2, 424739, tzinfo=timezone.utc)
+    test_insert_split_in_tree(
+        [dt + timedelta(minutes=i) for i in range(1000)],
+        20,
+        2048,
+        8,
+        40,
+        DatetimeUTCSerializer
     )

@@ -1,5 +1,11 @@
 import abc
+from datetime import datetime, timezone
 from uuid import UUID
+
+try:
+    import temporenc
+except ImportError:
+    temporenc = None
 
 from .const import ENDIAN
 
@@ -53,3 +59,24 @@ class UUIDSerializer(Serializer):
 
     def deserialize(self, data: bytes) -> UUID:
         return UUID(bytes=data)
+
+
+class DatetimeUTCSerializer(Serializer):
+
+    __slots__ = []
+
+    def __init__(self):
+        if temporenc is None:
+            raise RuntimeError('Serialization to/from datetime needs the '
+                               'third-party library "temporenc"')
+
+    def serialize(self, obj: datetime, key_size: int) -> bytes:
+        if obj.tzinfo is None:
+            raise ValueError('DatetimeUTCSerializer needs a timezone aware '
+                             'datetime')
+        return temporenc.packb(obj, type='DTS')
+
+    def deserialize(self, data: bytes) -> datetime:
+        rv = temporenc.unpackb(data).datetime()
+        rv = rv.replace(tzinfo=timezone.utc)
+        return rv

@@ -52,5 +52,8 @@ setup(
             'python-coveralls',
             'pycodestyle'
         ],
+        'datetime': [
+            'temporenc',
+        ],
     },
 )
