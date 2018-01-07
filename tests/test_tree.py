@@ -251,7 +251,7 @@ iterators = [
 orders = [3, 4, 50]
 page_sizes = [4096, 8192]
 key_sizes = [4, 16]
-values_sizes = [4, 16]
+values_sizes = [1, 16]
 serializer_class = [IntSerializer, StrSerializer]
 matrix = itertools.product(iterators, orders, page_sizes, key_sizes,
                            values_sizes, serializer_class)
@@ -311,3 +311,13 @@ def test_insert_split_in_tree_datetime_utc():
         40,
         DatetimeUTCSerializer
     )
+
+
+def test_overflow(b):
+    data = b'f' * 323343
+    with b._mem.write_transaction:
+        first_overflow_page = b._create_overflow(data)
+        assert b._read_from_overflow(first_overflow_page) == data
+
+    with b._mem.read_transaction:
+        assert b._read_from_overflow(first_overflow_page) == data

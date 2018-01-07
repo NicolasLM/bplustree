@@ -130,6 +130,19 @@ class FileMemory:
         self._wal.set_page(node.page, node.dump())
         self._cache[node.page] = node
 
+    def set_page(self, page: int, data: bytes):
+        """Set a raw page of data.
+
+        Used currently only for overflow pages.
+        """
+        self._wal.set_page(page, data)
+
+    def get_page(self, page: int) -> bytes:
+        data = self._wal.get_page(page)
+        if not data:
+            data = self._read_page(page)
+        return data
+
     @property
     def read_transaction(self):
 

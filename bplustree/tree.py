@@ -3,7 +3,9 @@ from logging import getLogger
 from typing import Optional, Union, Iterator
 
 from . import utils
-from .const import TreeConf
+from .const import (
+    TreeConf, PAGE_REFERENCE_BYTES, ENDIAN, USED_PAGE_LENGTH_BYTES
+)
 from .entry import Record, Reference
 from .memory import FileMemory
 from .node import Node, LonelyRootNode, RootNode, InternalNode, LeafNode
@@ -74,24 +76,41 @@ class BPlusTree:
         with self._mem.write_transaction:
             node = self._search_in_tree(key, self._root_node)
 
-            # Check if an entry with the key already exist
+            # Check if a record with the key already exist
             try:
-                existing_entry = node.get_entry(key)
+                existing_record = node.get_entry(key)
             except ValueError:
                 pass
             else:
                 if not replace:
                     raise ValueError('Key {} already exists'.format(key))
 
-                existing_entry.value = value
+                # TODO: collect previously used overflow pages
+                if len(value) <= self._tree_conf.value_size:
+                    existing_record.value = value
+                    existing_record.overflow_page = None
+                else:
+                    existing_record.value = None
+                    existing_record.overflow_page = self._create_overflow(
+                        value
+                    )
                 self._mem.set_node(node)
                 return
 
+            if len(value) <= self._tree_conf.value_size:
+                record = self.Record(key, value=value)
+            else:
+                # Record values exceeding the max value_size must be placed
+                # into overflow pages
+                first_overflow_page = self._create_overflow(value)
+                record = self.Record(key, value=None,
+                                     overflow_page=first_overflow_page)
+
             if node.can_add_entry:
-                node.insert_entry(self.Record(key, value))
+                node.insert_entry(record)
                 self._mem.set_node(node)
             else:
-                node.insert_entry(self.Record(key, value))
+                node.insert_entry(record)
                 self._split_leaf(node)
 
     def get(self, key, default=None) -> bytes:
@@ -102,8 +121,9 @@ class BPlusTree:
             except ValueError:
                 return default
             else:
-                assert isinstance(record.value, bytes)
-                return record.value
+                rv = self._get_value_from_record(record)
+                assert isinstance(rv, bytes)
+                return rv
 
     def __contains__(self, item):
         with self._mem.read_transaction:
@@ -122,7 +142,7 @@ class BPlusTree:
                 # and sometimes a normal value
                 rv = dict()
                 for record in self._iter_slice(item):
-                    rv[record.key] = record.value
+                    rv[record.key] = self._get_value_from_record(record)
                 return rv
 
             else:
@@ -171,14 +191,14 @@ class BPlusTree:
             slice_ = slice(None)
         with self._mem.read_transaction:
             for record in self._iter_slice(slice_):
-                yield record.key, record.value
+                yield record.key, self._get_value_from_record(record)
 
     def values(self, slice_: Optional[slice]=None) -> Iterator[bytes]:
         if not slice_:
             slice_ = slice(None)
         with self._mem.read_transaction:
             for record in self._iter_slice(slice_):
-                yield record.value
+                yield self._get_value_from_record(record)
 
     def __bool__(self):
         with self._mem.read_transaction:
@@ -325,3 +345,64 @@ class BPlusTree:
         self._root_node_page = new_root.page
         self._mem.set_metadata(self._root_node_page, self._tree_conf)
         self._mem.set_node(new_root)
+
+    # TODO: Change overflow into a new kind of Node
+    def _create_overflow(self, value: bytes) -> int:
+        overflow_max_payload = (
+            self._tree_conf.page_size - PAGE_REFERENCE_BYTES -
+            USED_PAGE_LENGTH_BYTES
+        )
+        first_overflow_page = self._mem.next_available_page
+        next_overflow_page = first_overflow_page
+
+        iterator = utils.iter_slice(value, overflow_max_payload)
+        for slice_value, is_last in iterator:
+            current_overflow_page = next_overflow_page
+
+            if is_last:
+                next_overflow_page = 0
+            else:
+                next_overflow_page = self._mem.next_available_page
+
+            length_payload = len(slice_value)
+            padding = (
+                self._tree_conf.page_size - length_payload -
+                PAGE_REFERENCE_BYTES - USED_PAGE_LENGTH_BYTES
+            )
+
+            overflow_page_data = (
+                next_overflow_page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN) +
+                length_payload.to_bytes(USED_PAGE_LENGTH_BYTES, ENDIAN) +
+                slice_value +
+                bytes(padding)
+            )
+            self._mem.set_page(current_overflow_page, overflow_page_data)
+
+        return first_overflow_page
+
+    def _read_from_overflow(self, first_overflow_page) -> bytes:
+        rv = bytearray()
+        next_overflow_page = first_overflow_page
+        while True:
+            data = self._mem.get_page(next_overflow_page)
+
+            next_overflow_page = int.from_bytes(
+                data[0:PAGE_REFERENCE_BYTES], ENDIAN
+            )
+            end_length_payload = PAGE_REFERENCE_BYTES + USED_PAGE_LENGTH_BYTES
+            length_payload = int.from_bytes(
+                data[PAGE_REFERENCE_BYTES:end_length_payload], ENDIAN
+            )
+            slice_value = data[end_length_payload:
+                               end_length_payload+length_payload]
+            rv.extend(slice_value)
+
+            if next_overflow_page == 0:
+                break
+
+        return bytes(rv)
+
+    def _get_value_from_record(self, record: Record) -> bytes:
+        if record.value is not None:
+            return record.value
+        return self._read_from_overflow(record.overflow_page)

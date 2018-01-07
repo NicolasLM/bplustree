@@ -52,8 +52,10 @@ serializers for the most common types are provided. For example to index UUIDs:
     >>> list(tree.keys())
     [UUID('48f2553c-de23-4d20-95bf-6972a89f3bc0')]
 
-Values on the other hand are always bytes. Like keys, the limit on their length
-can be set with ``value_size=128`` when building the tree.
+Values on the other hand are always bytes. They can be of arbitrary length,
+the parameter ``value_size=128`` defines the upper bound of value sizes that
+can be stored in the tree itself. Values exceeding this limit are stored in
+overflow pages. Each overflowing value occupies at least a full page.
 
 Iterating
 ---------
@@ -139,7 +141,7 @@ Some advices to efficiently use the tree:
 - Insert elements in ascending order if possible, prefer UUID v1 to UUID v4
 - Use ``tree.checkpoint()`` from time to time if you insert a lot, this will
   prevent the WAL from growing unbounded
-- Use small keys and values
+- Use small keys and values, set their limit and overflow values accordingly
 - Store the file and WAL on a fast disk
 
 License

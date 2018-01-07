@@ -1,4 +1,5 @@
 import abc
+from typing import Optional
 
 from .const import (ENDIAN, PAGE_REFERENCE_BYTES,
                     USED_KEY_LENGTH_BYTES, USED_VALUE_LENGTH_BYTES, TreeConf)
@@ -35,17 +36,20 @@ class Entry(metaclass=abc.ABCMeta):
 class Record(Entry):
     """A container for the actual data the tree stores."""
 
-    __slots__ = ['_tree_conf', 'key', 'value', 'length']
+    __slots__ = ['_tree_conf', 'key', 'value', 'length', 'overflow_page']
 
     def __init__(self, tree_conf: TreeConf, key=None,
-                 value: bytes=None, data: bytes=None):
+                 value: Optional[bytes]=None, data: Optional[bytes]=None,
+                 overflow_page: Optional[int]=None):
         self._tree_conf = tree_conf
         self.key = key
         self.value = value
         self.length = (
             USED_KEY_LENGTH_BYTES + self._tree_conf.key_size +
-            USED_VALUE_LENGTH_BYTES + self._tree_conf.value_size
+            USED_VALUE_LENGTH_BYTES + self._tree_conf.value_size +
+            PAGE_REFERENCE_BYTES
         )
+        self.overflow_page = overflow_page
         if data:
             self.load(data)
         if self.value:
@@ -75,22 +79,41 @@ class Record(Entry):
         assert 0 <= used_value_length <= self._tree_conf.value_size
 
         end_value = end_used_value_length + used_value_length
-        self.value = data[end_used_value_length:end_value]
+
+        start_overflow = end_used_value_length + self._tree_conf.value_size
+        end_overflow = start_overflow + PAGE_REFERENCE_BYTES
+        overflow_page = int.from_bytes(
+            data[start_overflow:end_overflow], ENDIAN
+        )
+
+        if overflow_page:
+            self.overflow_page = overflow_page
+            self.value = None
+        else:
+            self.overflow_page = None
+            self.value = data[end_used_value_length:end_value]
 
     def dump(self) -> bytes:
-        assert isinstance(self.value, bytes)
+        assert self.value is None or self.overflow_page is None
         key_as_bytes = self._tree_conf.serializer.serialize(
             self.key, self._tree_conf.key_size
         )
         used_key_length = len(key_as_bytes)
-        used_value_length = len(self.value)
+        overflow_page = self.overflow_page or 0
+        if overflow_page:
+            value = b''
+        else:
+            value = self.value
+        used_value_length = len(value)
+
         data = (
             used_key_length.to_bytes(USED_VALUE_LENGTH_BYTES, ENDIAN) +
             key_as_bytes +
             bytes(self._tree_conf.key_size - used_key_length) +
             used_value_length.to_bytes(USED_VALUE_LENGTH_BYTES, ENDIAN) +
-            self.value +
-            bytes(self._tree_conf.value_size - used_value_length)
+            value +
+            bytes(self._tree_conf.value_size - used_value_length) +
+            overflow_page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN)
         )
         return data
 

@@ -14,6 +14,7 @@ def test_record_int_serialization():
     r2 = Record(tree_conf, data=data)
     assert r1 == r2
     assert r1.value == r2.value
+    assert r1.overflow_page == r2.overflow_page
 
 
 def test_record_str_serialization():
@@ -24,6 +25,17 @@ def test_record_str_serialization():
     r2 = Record(tree_conf, data=data)
     assert r1 == r2
     assert r1.value == r2.value
+    assert r1.overflow_page == r2.overflow_page
+
+
+def test_record_int_serialization_overflow_value():
+    r1 = Record(tree_conf, 42, overflow_page=5)
+    data = r1.dump()
+
+    r2 = Record(tree_conf, data=data)
+    assert r1 == r2
+    assert r1.value == r2.value
+    assert r1.overflow_page == r2.overflow_page
 
 
 def test_record_repr():
