@@ -121,10 +121,13 @@ class BPlusTree:
         All inserts happen in a single transaction. This is way faster than
         manually inserting in a loop.
         """
+        node = None
         with self._mem.write_transaction:
 
             for key, value in iterable:
-                node = self._search_in_tree(key, self._root_node)
+
+                if node is None:
+                    node = self._search_in_tree(key, self._root_node)
 
                 try:
                     biggest_entry = node.biggest_entry
@@ -147,9 +150,11 @@ class BPlusTree:
                     node.insert_entry_at_the_end(record)
                 else:
                     node.insert_entry_at_the_end(record)
-                    node = self._split_leaf(node)
+                    self._split_leaf(node)
+                    node = None
 
-            self._mem.set_node(node)
+            if node is not None:
+                self._mem.set_node(node)
 
     def get(self, key, default=None) -> bytes:
         with self._mem.read_transaction:
@@ -328,11 +333,8 @@ class BPlusTree:
         child_node.parent = node
         return self._search_in_tree(key, child_node)
 
-    def _split_leaf(self, old_node: 'Node') -> 'Node':
-        """Split a leaf Node to allow the tree to grow.
-
-        Return the new node created.
-        """
+    def _split_leaf(self, old_node: 'Node'):
+        """Split a leaf Node to allow the tree to grow."""
         parent = old_node.parent
         new_node = self.LeafNode(page=self._mem.next_available_page,
                                  next_page=old_node.next_page)
@@ -356,7 +358,6 @@ class BPlusTree:
 
         self._mem.set_node(old_node)
         self._mem.set_node(new_node)
-        return new_node
 
     def _split_parent(self, old_node: Node):
         parent = old_node.parent

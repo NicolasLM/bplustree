@@ -253,35 +253,40 @@ page_sizes = [4096, 8192]
 key_sizes = [4, 16]
 values_sizes = [1, 16]
 serializer_class = [IntSerializer, StrSerializer]
+cache_sizes = [0, 50]
 matrix = itertools.product(iterators, orders, page_sizes, key_sizes,
-                           values_sizes, serializer_class)
+                           values_sizes, serializer_class, cache_sizes)
 
 
 @pytest.mark.parametrize(
-    'iterator,order,page_size,k_size,v_size,serialize_class', matrix
+    'iterator,order,page_size,k_size,v_size,serialize_class,cache_size', matrix
 )
 def test_insert_split_in_tree(iterator, order, page_size, k_size, v_size,
-                              serialize_class):
-    inserted = set()
+                              serialize_class, cache_size):
 
-    b = BPlusTree(filename, order=order, page_size=page_size,
-                  key_size=k_size, value_size=v_size,
-                  serializer=serialize_class())
-
+    inserted = list()
     for i in iterator:
         v = str(i).encode()
         k = i
         if serialize_class is StrSerializer:
             k = str(i)
-        b.insert(k, v)
-        inserted.add((k, v))
+        inserted.append((k, v))
 
-    if filename:
-        # Reload tree from file before checking values
-        b.close()
-        b = BPlusTree(filename, order=order, page_size=page_size,
-                      key_size=k_size, value_size=v_size,
-                      serializer=serialize_class())
+    b = BPlusTree(filename, order=order, page_size=page_size,
+                  key_size=k_size, value_size=v_size, cache_size=cache_size,
+                  serializer=serialize_class())
+
+    if sorted(inserted) == inserted:
+        b.batch_insert(inserted)
+    else:
+        for k, v in inserted:
+            b.insert(k, v)
+
+    # Reload tree from file before checking values
+    b.close()
+    b = BPlusTree(filename, order=order, page_size=page_size,
+                  key_size=k_size, value_size=v_size, cache_size=cache_size,
+                  serializer=serialize_class())
 
     for k, v in inserted:
         assert b.get(k) == v
@@ -297,7 +302,8 @@ def test_insert_split_in_tree_uuid():
         4096,
         16,
         40,
-        UUIDSerializer
+        UUIDSerializer,
+        50
     )
 
 
@@ -309,7 +315,8 @@ def test_insert_split_in_tree_datetime_utc():
         2048,
         8,
         40,
-        DatetimeUTCSerializer
+        DatetimeUTCSerializer,
+        50
     )
 
 

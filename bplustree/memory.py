@@ -79,6 +79,22 @@ def read_from_file(file_fd: io.FileIO, start: int, stop: int) -> bytes:
     return data
 
 
+class FakeCache:
+    """A cache that doesn't cache anything.
+
+    Because cachetools does not work with maxsize=0.
+    """
+
+    def get(self, k):
+        pass
+
+    def __setitem__(self, key, value):
+        pass
+
+    def clear(self):
+        pass
+
+
 class FileMemory:
 
     __slots__ = ['_filename', '_tree_conf', '_lock', '_cache', '_fd',
@@ -89,7 +105,11 @@ class FileMemory:
         self._filename = filename
         self._tree_conf = tree_conf
         self._lock = rwlock.RWLock()
-        self._cache = cachetools.LRUCache(maxsize=cache_size)
+
+        if cache_size == 0:
+            self._cache = FakeCache()
+        else:
+            self._cache = cachetools.LRUCache(maxsize=cache_size)
 
         self._fd, self._dir_fd = open_file_in_dir(filename)
 
