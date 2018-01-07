@@ -40,7 +40,13 @@ def test_record_int_serialization_overflow_value():
 
 def test_record_repr():
     r1 = Record(tree_conf, 42, b'foo')
-    assert repr(r1) == "<Record: 42 value=b'foo'...>"
+    assert repr(r1) == "<Record: 42 value=b'foo'>"
+
+    r1.value = None
+    assert repr(r1) == "<Record: 42 unknown value>"
+
+    r1.overflow_page = 5
+    assert repr(r1) == "<Record: 42 overflowing value>"
 
 
 def test_record_slots():

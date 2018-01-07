@@ -118,9 +118,13 @@ class Record(Entry):
         return data
 
     def __repr__(self):
-        return '<Record: {} value={}...>'.format(
-            self.key, self.value[0:16]
-        )
+        if self.overflow_page:
+            return '<Record: {} overflowing value>'.format(self.key)
+        if self.value:
+            return '<Record: {} value={}>'.format(
+                self.key, self.value[0:16]
+            )
+        return '<Record: {} unknown value>'.format(self.key)
 
 
 class Reference(Entry):
