@@ -102,7 +102,7 @@ def test_insert_find_get_remove_entries():
 
     # Test insert_entry
     r42, r43 = Reference(tree_conf, 42, 1, 2), Reference(tree_conf, 43, 2, 3)
-    node.insert_entry(r43)
+    node.insert_entry_at_the_end(r43)
     node.insert_entry(r42)
     assert sorted(node.entries) == node.entries
 

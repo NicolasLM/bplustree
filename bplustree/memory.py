@@ -223,7 +223,7 @@ class FileMemory:
             self._tree_conf.value_size.to_bytes(OTHERS_BYTES, ENDIAN) +
             bytes(self._tree_conf.page_size - length)
         )
-        self._write_page_in_tree(0, data)
+        self._write_page_in_tree(0, data, fsync=True)
 
     def close(self):
         self.perform_checkpoint()
@@ -234,7 +234,7 @@ class FileMemory:
     def perform_checkpoint(self, reopen_wal=False):
         logger.info('Performing checkpoint of %s', self._filename)
         for page, page_data in self._wal.checkpoint():
-            self._write_page_in_tree(page, page_data)
+            self._write_page_in_tree(page, page_data, fsync=False)
         fsync_file_and_dir(self._fd.fileno(), self._dir_fd)
         if reopen_wal:
             self._wal = WAL(self._filename, self._tree_conf.page_size)
@@ -245,14 +245,15 @@ class FileMemory:
         assert stop - start == self._tree_conf.page_size
         return read_from_file(self._fd, start, stop)
 
-    def _write_page_in_tree(self, page: int, data: Union[bytes, bytearray]):
+    def _write_page_in_tree(self, page: int, data: Union[bytes, bytearray],
+                            fsync: bool=True):
         """Write a page of data in the tree file itself.
 
         To be used during checkpoints and other non-standard uses.
         """
         assert len(data) == self._tree_conf.page_size
         self._fd.seek(page * self._tree_conf.page_size)
-        write_to_file(self._fd, self._dir_fd, data)
+        write_to_file(self._fd, self._dir_fd, data, fsync=fsync)
 
     def __repr__(self):
         return '<FileMemory: {}>'.format(self._filename)

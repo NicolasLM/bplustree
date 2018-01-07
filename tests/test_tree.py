@@ -321,3 +321,36 @@ def test_overflow(b):
 
     with b._mem.read_transaction:
         assert b._read_from_overflow(first_overflow_page) == data
+
+
+def test_batch_insert(b):
+    def generate(from_, to):
+        for i in range(from_, to):
+            yield i, str(i).encode()
+
+    b.batch_insert(generate(0, 1000))
+    b.batch_insert(generate(1000, 2000))
+
+    i = 0
+    for k, v in b.items():
+        assert k == i
+        assert v == str(i).encode()
+        i += 1
+    assert i == 2000
+
+
+def test_batch_insert_no_in_order(b):
+    with pytest.raises(ValueError):
+        b.batch_insert([(2, b'2'), (1, b'1')])
+    assert b.get(1) is None
+    assert b.get(2) is None
+
+    b.insert(2, b'2')
+    with pytest.raises(ValueError):
+        b.batch_insert([(1, b'1')])
+
+    with pytest.raises(ValueError):
+        b.batch_insert([(2, b'2')])
+
+    assert b.get(1) is None
+    assert b.get(2) == b'2'

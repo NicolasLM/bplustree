@@ -1,6 +1,6 @@
 from functools import partial
 from logging import getLogger
-from typing import Optional, Union, Iterator
+from typing import Optional, Union, Iterator, Iterable
 
 from . import utils
 from .const import (
@@ -112,6 +112,44 @@ class BPlusTree:
             else:
                 node.insert_entry(record)
                 self._split_leaf(node)
+
+    def batch_insert(self, iterable: Iterable):
+        """Insert many elements in the tree at once.
+
+        The iterable object must yield tuples (key, value) in ascending order.
+        All keys to insert must be bigger than all keys currently in the tree.
+        All inserts happen in a single transaction. This is way faster than
+        manually inserting in a loop.
+        """
+        with self._mem.write_transaction:
+
+            for key, value in iterable:
+                node = self._search_in_tree(key, self._root_node)
+
+                try:
+                    biggest_entry = node.biggest_entry
+                except IndexError:
+                    biggest_entry = None
+                if biggest_entry and key <= biggest_entry.key:
+                    raise ValueError('Keys to batch insert must be sorted and '
+                                     'bigger than keys currently in the tree')
+
+                if len(value) <= self._tree_conf.value_size:
+                    record = self.Record(key, value=value)
+                else:
+                    # Record values exceeding the max value_size must be placed
+                    # into overflow pages
+                    first_overflow_page = self._create_overflow(value)
+                    record = self.Record(key, value=None,
+                                         overflow_page=first_overflow_page)
+
+                if node.can_add_entry:
+                    node.insert_entry_at_the_end(record)
+                else:
+                    node.insert_entry_at_the_end(record)
+                    node = self._split_leaf(node)
+
+            self._mem.set_node(node)
 
     def get(self, key, default=None) -> bytes:
         with self._mem.read_transaction:
@@ -290,7 +328,11 @@ class BPlusTree:
         child_node.parent = node
         return self._search_in_tree(key, child_node)
 
-    def _split_leaf(self, old_node: 'Node'):
+    def _split_leaf(self, old_node: 'Node') -> 'Node':
+        """Split a leaf Node to allow the tree to grow.
+
+        Return the new node created.
+        """
         parent = old_node.parent
         new_node = self.LeafNode(page=self._mem.next_available_page,
                                  next_page=old_node.next_page)
@@ -314,6 +356,7 @@ class BPlusTree:
 
         self._mem.set_node(old_node)
         self._mem.set_node(new_node)
+        return new_node
 
     def _split_parent(self, old_node: Node):
         parent = old_node.parent

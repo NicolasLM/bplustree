@@ -137,8 +137,10 @@ best performance out of it:
 
 Some advices to efficiently use the tree:
 
-- Let the tree iterate for you instead of using ``tree.get()`` in a loop
 - Insert elements in ascending order if possible, prefer UUID v1 to UUID v4
+- Insert in batch with ``tree.batch_insert(iterator)`` instead of using
+  ``tree.insert()`` in a loop
+- Let the tree iterate for you instead of using ``tree.get()`` in a loop
 - Use ``tree.checkpoint()`` from time to time if you insert a lot, this will
   prevent the WAL from growing unbounded
 - Use small keys and values, set their limit and overflow values accordingly

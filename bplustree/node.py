@@ -106,6 +106,14 @@ class Node(metaclass=abc.ABCMeta):
     def insert_entry(self, entry: Entry):
         bisect.insort(self.entries, entry)
 
+    def insert_entry_at_the_end(self, entry: Entry):
+        """Insert an entry at the end of the entry list.
+
+        This is an optimized version of `insert_entry` when it is known that
+        the key to insert is bigger than any other entries.
+        """
+        self.entries.append(entry)
+
     def remove_entry(self, key):
         self.entries.pop(self._find_entry_index(key))
 
