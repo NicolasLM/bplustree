@@ -16,7 +16,7 @@ from .conftest import filename
 
 @pytest.fixture
 def b():
-    b = BPlusTree(filename)
+    b = BPlusTree(filename, key_size=16, value_size=16, order=4)
     yield b
     b.close()
 
@@ -43,8 +43,8 @@ def test_closing_context_manager(mock_close):
 def test_initial_values():
     b = BPlusTree(filename, page_size=512, value_size=128)
     assert b._tree_conf.page_size == 512
-    assert b._tree_conf.order == 4
-    assert b._tree_conf.key_size == 16
+    assert b._tree_conf.order == 100
+    assert b._tree_conf.key_size == 8
     assert b._tree_conf.value_size == 128
     b.close()
 
@@ -106,7 +106,7 @@ def test_len_tree(b):
 
 
 def test_length_hint_tree():
-    b = BPlusTree(filename, order=100)
+    b = BPlusTree(filename, key_size=16, value_size=16, order=100)
     assert b.__length_hint__() == 49
     b.insert(1, b'foo')
     assert b.__length_hint__() == 49
