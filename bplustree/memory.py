@@ -54,7 +54,7 @@ def write_to_file(file_fd: io.FileIO, dir_fileno: Optional[int],
     length_to_write = len(data)
     written = 0
     while written < length_to_write:
-        written = file_fd.write(data[written:])
+        written += file_fd.write(data[written:])
     if fsync:
         fsync_file_and_dir(file_fd.fileno(), dir_fileno)
 

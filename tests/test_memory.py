@@ -7,7 +7,7 @@ import pytest
 
 from bplustree.node import LeafNode
 from bplustree.memory import (
-    FileMemory, open_file_in_dir, WAL, ReachedEndOfFile
+    FileMemory, open_file_in_dir, WAL, ReachedEndOfFile, write_to_file
 )
 from bplustree.const import TreeConf
 from .conftest import filename
@@ -59,6 +59,21 @@ def test_open_file_in_dir():
         else:
             assert isinstance(dir_fd, int)
             os.close(dir_fd)
+
+
+def test_write_to_file_multi_times():
+    def side_effect(*args, **kwargs):
+        if len(args) == 1:
+            data = args[0]
+        if len(data) > 5:
+            return 5
+        else:
+            return len(data)
+
+    mock_fd = mock.MagicMock()
+    mock_fd.write.side_effect = side_effect
+
+    write_to_file(mock_fd, None, b'abcdefg')
 
 
 @mock.patch('bplustree.memory.platform.system', return_value='Windows')
