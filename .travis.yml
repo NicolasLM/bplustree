@@ -9,7 +9,7 @@ install:
 
 script:
     - pytest -v --cov=bplustree tests/
-    - pycodestyle bplustree tests
+    - pycodestyle --ignore=E252,E226,W504 bplustree tests
 
 after_success:
   - coveralls
