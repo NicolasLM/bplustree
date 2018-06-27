@@ -1,6 +1,6 @@
 import pytest
 
-from bplustree.entry import Record, Reference
+from bplustree.entry import Record, Reference, NOT_LOADED
 from bplustree.const import TreeConf
 from bplustree.serializer import IntSerializer, StrSerializer
 
@@ -55,6 +55,26 @@ def test_record_slots():
         r1.foo = True
 
 
+def test_record_lazy_load():
+    data = Record(tree_conf, 42, b'foo').dump()
+    r = Record(tree_conf, data=data)
+
+    assert r._data == data
+    assert r._key == NOT_LOADED
+    assert r._value == NOT_LOADED
+    assert r._overflow_page == NOT_LOADED
+
+    _ = r.key
+    assert r._key == 42
+    assert r._value == b'foo'
+    assert r._overflow_page is None
+    assert r._data == data
+
+    r.key = 27
+    assert r._key == 27
+    assert r._data is None
+
+
 def test_reference_int_serialization():
     r1 = Reference(tree_conf, 42, 1, 2)
     data = r1.dump()
@@ -79,3 +99,23 @@ def test_reference_str_serialization():
 def test_reference_repr():
     r1 = Reference(tree_conf, 42, 1, 2)
     assert repr(r1) == '<Reference: key=42 before=1 after=2>'
+
+
+def test_reference_lazy_load():
+    data = Reference(tree_conf, 42, 1, 2).dump()
+    r = Reference(tree_conf, data=data)
+
+    assert r._data == data
+    assert r._key == NOT_LOADED
+    assert r._before == NOT_LOADED
+    assert r._after == NOT_LOADED
+
+    _ = r.key
+    assert r._key == 42
+    assert r._before == 1
+    assert r._after == 2
+    assert r._data == data
+
+    r.key = 27
+    assert r._key == 27
+    assert r._data is None
