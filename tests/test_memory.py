@@ -5,7 +5,7 @@ from unittest import mock
 
 import pytest
 
-from bplustree.node import LeafNode
+from bplustree.node import LeafNode, FreelistNode
 from bplustree.memory import (
     FileMemory, open_file_in_dir, WAL, ReachedEndOfFile, write_to_file
 )
@@ -41,6 +41,36 @@ def test_file_memory_next_available_page():
     mem = FileMemory(filename, tree_conf)
     for i in range(1, 100):
         assert mem.next_available_page == i
+
+
+def test_file_memory_freelist():
+    mem = FileMemory(filename, tree_conf)
+    assert mem.next_available_page == 1
+    assert mem._traverse_free_list() == (None, None)
+
+    mem.del_page(1)
+    assert mem._traverse_free_list() == (
+        None, FreelistNode(tree_conf, page=1, next_page=None)
+    )
+    assert mem.next_available_page == 1
+    assert mem._traverse_free_list() == (None, None)
+
+    mem.del_page(1)
+    mem.del_page(2)
+    assert mem._traverse_free_list() == (
+        FreelistNode(tree_conf, page=1, next_page=2),
+        FreelistNode(tree_conf, page=2, next_page=None)
+    )
+    mem.del_page(3)
+    assert mem._traverse_free_list() == (
+        FreelistNode(tree_conf, page=2, next_page=3),
+        FreelistNode(tree_conf, page=3, next_page=None)
+    )
+
+    assert mem._pop_from_freelist() == 3
+    assert mem._pop_from_freelist() == 2
+    assert mem._pop_from_freelist() == 1
+    assert mem._pop_from_freelist() is None
 
 
 def test_open_file_in_dir():

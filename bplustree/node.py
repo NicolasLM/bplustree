@@ -173,6 +173,8 @@ class Node(metaclass=abc.ABCMeta):
             return LeafNode(tree_conf, data, page)
         elif node_type_int == 5:
             return OverflowNode(tree_conf, data, page)
+        elif node_type_int == 6:
+            return FreelistNode(tree_conf, data, page)
         else:
             assert False, 'No Node with type {} exists'.format(node_type_int)
 
@@ -305,3 +307,14 @@ class OverflowNode(Node):
         self.min_children = 1
         self._entry_class = OpaqueData
         super().__init__(tree_conf, data, page, next_page=next_page)
+
+
+class FreelistNode(Node):
+    """Node that is a marker for a deallocated page."""
+
+    def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
+                 page: int=None, next_page: int=None):
+        self._node_type_int = 6
+        self.max_children = 0
+        self.min_children = 0
+        super().__init__(tree_conf, None, page, next_page=next_page)

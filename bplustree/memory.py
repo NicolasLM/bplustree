@@ -8,7 +8,7 @@ from typing import Union, Tuple, Optional
 import cachetools
 import rwlock
 
-from .node import Node
+from .node import Node, FreelistNode
 from .const import (
     ENDIAN, PAGE_REFERENCE_BYTES, OTHERS_BYTES, TreeConf, FRAME_TYPE_BYTES
 )
@@ -98,7 +98,8 @@ class FakeCache:
 class FileMemory:
 
     __slots__ = ['_filename', '_tree_conf', '_lock', '_cache', '_fd',
-                 '_dir_fd', '_wal', 'last_page']
+                 '_dir_fd', '_wal', 'last_page', '_freelist_start_page',
+                 '_root_node_page']
 
     def __init__(self, filename: str, tree_conf: TreeConf,
                  cache_size: int=512):
@@ -121,6 +122,10 @@ class FileMemory:
         self._fd.seek(0, io.SEEK_END)
         last_byte = self._fd.tell()
         self.last_page = int(last_byte / self._tree_conf.page_size)
+        self._freelist_start_page = 0
+
+        # Todo: Remove this, it should only be in Tree
+        self._root_node_page = 0
 
     def get_node(self, page: int):
         """Get a node from storage.
@@ -149,6 +154,12 @@ class FileMemory:
     def set_node(self, node: Node):
         self._wal.set_page(node.page, node.dump())
         self._cache[node.page] = node
+
+    def del_node(self, node: Node):
+        self._insert_in_freelist(node.page)
+
+    def del_page(self, page: int):
+        self._insert_in_freelist(page)
 
     @property
     def read_transaction(self):
@@ -186,9 +197,60 @@ class FileMemory:
 
     @property
     def next_available_page(self) -> int:
+        last_freelist_page = self._pop_from_freelist()
+        if last_freelist_page is not None:
+            return last_freelist_page
+
         self.last_page += 1
         return self.last_page
 
+    def _traverse_free_list(self) -> Tuple[Optional[FreelistNode],
+                                           Optional[FreelistNode]]:
+        if self._freelist_start_page == 0:
+            return None, None
+
+        second_to_last_node = None
+        last_node = self.get_node(self._freelist_start_page)
+
+        while last_node.next_page is not None:
+            second_to_last_node = last_node
+            last_node = self.get_node(second_to_last_node.next_page)
+
+        return second_to_last_node, last_node
+
+    def _insert_in_freelist(self, page: int):
+        """Insert a page at the end of the freelist."""
+        _, last_node = self._traverse_free_list()
+
+        self.set_node(FreelistNode(self._tree_conf, page=page, next_page=None))
+
+        if last_node is None:
+            # Write in metadata that the freelist got a new starting point
+            self._freelist_start_page = page
+            self.set_metadata(None, None)
+        else:
+            last_node.next_page = page
+            self.set_node(last_node)
+
+    def _pop_from_freelist(self) -> Optional[int]:
+        """Remove the last page from the freelist and return its page."""
+        second_to_last_node, last_node = self._traverse_free_list()
+
+        if last_node is None:
+            # Freelist is completely empty, nothing to pop
+            return None
+
+        if second_to_last_node is None:
+            # Write in metadata that the freelist is empty
+            self._freelist_start_page = 0
+            self.set_metadata(None, None)
+        else:
+            second_to_last_node.next_page = None
+            self.set_node(second_to_last_node)
+
+        return last_node.page
+
+    # Todo: make metadata as a normal Node
     def get_metadata(self) -> tuple:
         try:
             data = self._read_page(0)
@@ -214,23 +276,39 @@ class FileMemory:
         value_size = int.from_bytes(
             data[end_key_size:end_value_size], ENDIAN
         )
+        end_freelist_start_page = end_value_size + PAGE_REFERENCE_BYTES
+        self._freelist_start_page = int.from_bytes(
+            data[end_value_size:end_freelist_start_page], ENDIAN
+        )
         self._tree_conf = TreeConf(
             page_size, order, key_size, value_size, self._tree_conf.serializer
         )
+        self._root_node_page = root_node_page
         return root_node_page, self._tree_conf
 
-    def set_metadata(self, root_node_page: int, tree_conf: TreeConf):
-        self._tree_conf = tree_conf
-        length = PAGE_REFERENCE_BYTES + 4 * OTHERS_BYTES
+    def set_metadata(self, root_node_page: Optional[int],
+                     tree_conf: Optional[TreeConf]):
+
+        if root_node_page is None:
+            root_node_page = self._root_node_page
+
+        if tree_conf is None:
+            tree_conf = self._tree_conf
+
+        length = 2 * PAGE_REFERENCE_BYTES + 4 * OTHERS_BYTES
         data = (
             root_node_page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN) +
-            self._tree_conf.page_size.to_bytes(OTHERS_BYTES, ENDIAN) +
-            self._tree_conf.order.to_bytes(OTHERS_BYTES, ENDIAN) +
-            self._tree_conf.key_size.to_bytes(OTHERS_BYTES, ENDIAN) +
-            self._tree_conf.value_size.to_bytes(OTHERS_BYTES, ENDIAN) +
-            bytes(self._tree_conf.page_size - length)
+            tree_conf.page_size.to_bytes(OTHERS_BYTES, ENDIAN) +
+            tree_conf.order.to_bytes(OTHERS_BYTES, ENDIAN) +
+            tree_conf.key_size.to_bytes(OTHERS_BYTES, ENDIAN) +
+            tree_conf.value_size.to_bytes(OTHERS_BYTES, ENDIAN) +
+            self._freelist_start_page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN) +
+            bytes(tree_conf.page_size - length)
         )
         self._write_page_in_tree(0, data, fsync=True)
+
+        self._tree_conf = tree_conf
+        self._root_node_page = root_node_page
 
     def close(self):
         self.perform_checkpoint()
