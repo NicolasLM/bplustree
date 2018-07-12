@@ -21,6 +21,12 @@ class Entry(metaclass=abc.ABCMeta):
     def dump(self) -> bytes:
         """Serialize object to data."""
 
+
+class ComparableEntry(Entry, metaclass=abc.ABCMeta):
+    """Entry that can be sorted against other entries based on their key."""
+
+    __slots__ = []
+
     def __eq__(self, other):
         return self.key == other.key
 
@@ -37,7 +43,7 @@ class Entry(metaclass=abc.ABCMeta):
         return self.key >= other.key
 
 
-class Record(Entry):
+class Record(ComparableEntry):
     """A container for the actual data the tree stores."""
 
     __slots__ = ['_tree_conf', 'length', '_key', '_value', '_overflow_page',
@@ -172,7 +178,7 @@ class Record(Entry):
         return '<Record: {} unknown value>'.format(self.key)
 
 
-class Reference(Entry):
+class Reference(ComparableEntry):
     """A container for a reference to other nodes."""
 
     __slots__ = ['_tree_conf', 'length', '_key', '_before', '_after', '_data']
@@ -275,3 +281,21 @@ class Reference(Entry):
         return '<Reference: key={} before={} after={}>'.format(
             self.key, self.before, self.after
         )
+
+
+class OpaqueData(Entry):
+    """Entry holding opaque data."""
+
+    __slots__ = ['data']
+
+    def __init__(self, tree_conf: TreeConf=None, data: bytes=None):
+        self.data = data
+
+    def load(self, data: bytes):
+        self.data = data
+
+    def dump(self) -> bytes:
+        return self.data
+
+    def __repr__(self):
+        return '<OpaqueData: {}>'.format(self.data)

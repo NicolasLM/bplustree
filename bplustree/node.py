@@ -5,7 +5,7 @@ from typing import Optional
 
 from .const import (ENDIAN, NODE_TYPE_BYTES, USED_PAGE_LENGTH_BYTES,
                     PAGE_REFERENCE_BYTES, TreeConf)
-from .entry import Entry, Record, Reference
+from .entry import Entry, Record, Reference, OpaqueData
 
 
 class Node(metaclass=abc.ABCMeta):
@@ -41,7 +41,13 @@ class Node(metaclass=abc.ABCMeta):
         if self.next_page == 0:
             self.next_page = None
 
-        entry_length = self._entry_class(self._tree_conf).length
+        try:
+            # For Nodes that can hold multiple sized Entries
+            entry_length = self._entry_class(self._tree_conf).length
+        except AttributeError:
+            # For Nodes that can hold a single variable sized Entry
+            entry_length = used_page_length - end_header
+
         for start_offset in range(end_header, used_page_length, entry_length):
             entry_data = data[start_offset:start_offset+entry_length]
             entry = self._entry_class(self._tree_conf, data=entry_data)
@@ -52,8 +58,12 @@ class Node(metaclass=abc.ABCMeta):
         for record in self.entries:
             data.extend(record.dump())
 
-        used_page_length = len(data) + 4
-        assert 0 <= used_page_length < self._tree_conf.page_size
+        # used_page_length = len(header) + len(data), but the header is
+        # generated later
+        used_page_length = len(data) + 4 + PAGE_REFERENCE_BYTES
+        assert 0 < used_page_length <= self._tree_conf.page_size
+        assert len(data) <= self.max_payload
+
         next_page = 0 if self.next_page is None else self.next_page
         header = (
             self._node_type_int.to_bytes(1, ENDIAN) +
@@ -63,12 +73,19 @@ class Node(metaclass=abc.ABCMeta):
 
         data = bytearray(header) + data
 
-        padding = self._tree_conf.page_size - len(data)
+        padding = self._tree_conf.page_size - used_page_length
         assert padding >= 0
         data.extend(bytearray(padding))
         assert len(data) == self._tree_conf.page_size
 
         return data
+
+    @property
+    def max_payload(self) -> int:
+        """Size in bytes of serialized payload a Node can carry."""
+        return (
+            self._tree_conf.page_size - 4 - PAGE_REFERENCE_BYTES
+        )
 
     @property
     def can_add_entry(self) -> bool:
@@ -95,9 +112,9 @@ class Node(metaclass=abc.ABCMeta):
         return self.entries[-1]
 
     @property
-    @abc.abstractmethod
     def num_children(self) -> int:
         """Number of entries or other nodes connected to the node."""
+        return len(self.entries)
 
     def pop_smallest(self) -> Entry:
         """Remove and return the smallest entry."""
@@ -154,6 +171,8 @@ class Node(metaclass=abc.ABCMeta):
             return InternalNode(tree_conf, data, page)
         elif node_type_int == 4:
             return LeafNode(tree_conf, data, page)
+        elif node_type_int == 5:
+            return OverflowNode(tree_conf, data, page)
         else:
             assert False, 'No Node with type {} exists'.format(node_type_int)
 
@@ -178,10 +197,6 @@ class RecordNode(Node):
                  page: int=None, parent: 'Node'=None, next_page: int=None):
         self._entry_class = Record
         super().__init__(tree_conf, data, page, parent, next_page)
-
-    @property
-    def num_children(self) -> int:
-        return len(self.entries)
 
 
 class LonelyRootNode(RecordNode):
@@ -278,3 +293,15 @@ class InternalNode(ReferenceNode):
         self.min_children = math.ceil(tree_conf.order / 2)
         self.max_children = tree_conf.order
         super().__init__(tree_conf, data, page, parent)
+
+
+class OverflowNode(Node):
+    """Node that holds a single Record value too large for its Node."""
+
+    def __init__(self, tree_conf: TreeConf, data: Optional[bytes]=None,
+                 page: int=None, next_page: int=None):
+        self._node_type_int = 5
+        self.max_children = 1
+        self.min_children = 1
+        self._entry_class = OpaqueData
+        super().__init__(tree_conf, data, page, next_page=next_page)

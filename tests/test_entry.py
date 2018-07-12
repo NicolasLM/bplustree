@@ -1,6 +1,6 @@
 import pytest
 
-from bplustree.entry import Record, Reference, NOT_LOADED
+from bplustree.entry import Record, Reference, OpaqueData, NOT_LOADED
 from bplustree.const import TreeConf
 from bplustree.serializer import IntSerializer, StrSerializer
 
@@ -119,3 +119,17 @@ def test_reference_lazy_load():
     r.key = 27
     assert r._key == 27
     assert r._data is None
+
+
+def test_opaque_data():
+    data = b'foo'
+    o = OpaqueData(data=data)
+    assert o.data == data
+    assert o.dump() == data
+
+    o = OpaqueData()
+    o.load(data)
+    assert o.data == data
+    assert o.dump() == data
+
+    assert repr(o) == "<OpaqueData: b'foo'>"

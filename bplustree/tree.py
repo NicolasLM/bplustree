@@ -3,12 +3,12 @@ from logging import getLogger
 from typing import Optional, Union, Iterator, Iterable
 
 from . import utils
-from .const import (
-    TreeConf, PAGE_REFERENCE_BYTES, ENDIAN, USED_PAGE_LENGTH_BYTES
-)
-from .entry import Record, Reference
+from .const import TreeConf
+from .entry import Record, Reference, OpaqueData
 from .memory import FileMemory
-from .node import Node, LonelyRootNode, RootNode, InternalNode, LeafNode
+from .node import (
+    Node, LonelyRootNode, RootNode, InternalNode, LeafNode, OverflowNode
+)
 from .serializer import Serializer, IntSerializer
 
 
@@ -19,7 +19,7 @@ class BPlusTree:
 
     __slots__ = ['_filename', '_tree_conf', '_mem', '_root_node_page',
                  '_is_open', 'LonelyRootNode', 'RootNode', 'InternalNode',
-                 'LeafNode', 'Record', 'Reference']
+                 'LeafNode', 'OverflowNode', 'Record', 'Reference']
 
     # ######################### Public API ################################
 
@@ -265,6 +265,7 @@ class BPlusTree:
         self.RootNode = partial(RootNode, self._tree_conf)
         self.InternalNode = partial(InternalNode, self._tree_conf)
         self.LeafNode = partial(LeafNode, self._tree_conf)
+        self.OverflowNode = partial(OverflowNode, self._tree_conf)
         self.Record = partial(Record, self._tree_conf)
         self.Reference = partial(Reference, self._tree_conf)
 
@@ -390,37 +391,24 @@ class BPlusTree:
         self._mem.set_metadata(self._root_node_page, self._tree_conf)
         self._mem.set_node(new_root)
 
-    # TODO: Change overflow into a new kind of Node
     def _create_overflow(self, value: bytes) -> int:
-        overflow_max_payload = (
-            self._tree_conf.page_size - PAGE_REFERENCE_BYTES -
-            USED_PAGE_LENGTH_BYTES
-        )
         first_overflow_page = self._mem.next_available_page
         next_overflow_page = first_overflow_page
 
-        iterator = utils.iter_slice(value, overflow_max_payload)
+        iterator = utils.iter_slice(value, self.OverflowNode().max_payload)
         for slice_value, is_last in iterator:
             current_overflow_page = next_overflow_page
 
             if is_last:
-                next_overflow_page = 0
+                next_overflow_page = None
             else:
                 next_overflow_page = self._mem.next_available_page
 
-            length_payload = len(slice_value)
-            padding = (
-                self._tree_conf.page_size - length_payload -
-                PAGE_REFERENCE_BYTES - USED_PAGE_LENGTH_BYTES
+            overflow_node = self.OverflowNode(
+                page=current_overflow_page, next_page=next_overflow_page
             )
-
-            overflow_page_data = (
-                next_overflow_page.to_bytes(PAGE_REFERENCE_BYTES, ENDIAN) +
-                length_payload.to_bytes(USED_PAGE_LENGTH_BYTES, ENDIAN) +
-                slice_value +
-                bytes(padding)
-            )
-            self._mem.set_page(current_overflow_page, overflow_page_data)
+            overflow_node.insert_entry_at_the_end(OpaqueData(data=slice_value))
+            self._mem.set_node(overflow_node)
 
         return first_overflow_page
 
@@ -428,20 +416,11 @@ class BPlusTree:
         rv = bytearray()
         next_overflow_page = first_overflow_page
         while True:
-            data = self._mem.get_page(next_overflow_page)
+            overflow_node = self._mem.get_node(next_overflow_page)
+            rv.extend(overflow_node.smallest_entry.data)
 
-            next_overflow_page = int.from_bytes(
-                data[0:PAGE_REFERENCE_BYTES], ENDIAN
-            )
-            end_length_payload = PAGE_REFERENCE_BYTES + USED_PAGE_LENGTH_BYTES
-            length_payload = int.from_bytes(
-                data[PAGE_REFERENCE_BYTES:end_length_payload], ENDIAN
-            )
-            slice_value = data[end_length_payload:
-                               end_length_payload+length_payload]
-            rv.extend(slice_value)
-
-            if next_overflow_page == 0:
+            next_overflow_page = overflow_node.next_page
+            if next_overflow_page is None:
                 break
 
         return bytes(rv)
