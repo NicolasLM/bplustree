@@ -85,6 +85,9 @@ class BPlusTree:
                 if not replace:
                     raise ValueError('Key {} already exists'.format(key))
 
+                if existing_record.overflow_page:
+                    self._mem.del
+
                 # TODO: collect previously used overflow pages
                 if len(value) <= self._tree_conf.value_size:
                     existing_record.value = value
@@ -424,6 +427,8 @@ class BPlusTree:
                 break
 
         return bytes(rv)
+
+    def _delete_overflow(self, first_overflow_page:):
 
     def _get_value_from_record(self, record: Record) -> bytes:
         if record.value is not None:
