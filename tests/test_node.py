@@ -1,9 +1,9 @@
 import pytest
 
 from bplustree.const import TreeConf, ENDIAN
-from bplustree.entry import Record, Reference
+from bplustree.entry import Record, Reference, OpaqueData
 from bplustree.node import (Node, LonelyRootNode, RootNode, InternalNode,
-                            LeafNode)
+                            LeafNode, FreelistNode, OverflowNode)
 from bplustree.serializer import IntSerializer
 
 tree_conf = TreeConf(4096, 7, 16, 16, IntSerializer())
@@ -140,3 +140,37 @@ def test_smallest_biggest():
 
     assert node.pop_smallest() == r42
     assert node.entries == [r43]
+
+
+def test_freelist_node_serialization():
+    n1 = FreelistNode(tree_conf, next_page=3)
+    data = n1.dump()
+
+    n2 = FreelistNode(tree_conf, data=data)
+    assert n1.next_page == n2.next_page
+
+
+def test_freelist_node_serialization_no_next_page():
+    n1 = FreelistNode(tree_conf, next_page=None)
+    data = n1.dump()
+
+    n2 = FreelistNode(tree_conf, data=data)
+    assert n1.next_page is n2.next_page is None
+
+
+def test_overflow_node_serialization():
+    n1 = OverflowNode(tree_conf, next_page=3)
+    n1.insert_entry_at_the_end(OpaqueData(data=b'foo'))
+    data = n1.dump()
+
+    n2 = OverflowNode(tree_conf, data=data)
+    assert n1.next_page == n2.next_page
+
+
+def test_overflow_node_serialization_no_next_page():
+    n1 = OverflowNode(tree_conf, next_page=None)
+    n1.insert_entry_at_the_end(OpaqueData(data=b'foo'))
+    data = n1.dump()
+
+    n2 = OverflowNode(tree_conf, data=data)
+    assert n1.next_page is n2.next_page is None

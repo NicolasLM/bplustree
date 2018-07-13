@@ -76,7 +76,7 @@ class BPlusTree:
         with self._mem.write_transaction:
             node = self._search_in_tree(key, self._root_node)
 
-            # Check if a record with the key already exist
+            # Check if a record with the key already exists
             try:
                 existing_record = node.get_entry(key)
             except ValueError:
@@ -86,9 +86,8 @@ class BPlusTree:
                     raise ValueError('Key {} already exists'.format(key))
 
                 if existing_record.overflow_page:
-                    self._mem.del
+                    self._delete_overflow(existing_record.overflow_page)
 
-                # TODO: collect previously used overflow pages
                 if len(value) <= self._tree_conf.value_size:
                     existing_record.value = value
                     existing_record.overflow_page = None
@@ -415,22 +414,32 @@ class BPlusTree:
 
         return first_overflow_page
 
-    def _read_from_overflow(self, first_overflow_page) -> bytes:
-        rv = bytearray()
+    def _traverse_overflow(self, first_overflow_page: int):
+        """Yield all Nodes of an overflow chain."""
         next_overflow_page = first_overflow_page
         while True:
             overflow_node = self._mem.get_node(next_overflow_page)
-            rv.extend(overflow_node.smallest_entry.data)
+            yield overflow_node
 
             next_overflow_page = overflow_node.next_page
             if next_overflow_page is None:
                 break
 
+    def _read_from_overflow(self, first_overflow_page: int) -> bytes:
+        """Collect all values of an overflow chain."""
+        rv = bytearray()
+        for overflow_node in self._traverse_overflow(first_overflow_page):
+            rv.extend(overflow_node.smallest_entry.data)
+
         return bytes(rv)
 
-    def _delete_overflow(self, first_overflow_page:):
+    def _delete_overflow(self, first_overflow_page: int):
+        """Delete all Nodes in an overflow chain."""
+        for overflow_node in self._traverse_overflow(first_overflow_page):
+            self._mem.del_node(overflow_node)
 
     def _get_value_from_record(self, record: Record) -> bytes:
         if record.value is not None:
             return record.value
+
         return self._read_from_overflow(record.overflow_page)

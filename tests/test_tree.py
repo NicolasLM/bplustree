@@ -329,6 +329,15 @@ def test_overflow(b):
     with b._mem.read_transaction:
         assert b._read_from_overflow(first_overflow_page) == data
 
+    assert b._mem.last_page == 81
+
+    with b._mem.write_transaction:
+        b._delete_overflow(first_overflow_page)
+
+    with b._mem.write_transaction:
+        for i in range(81, 2, -1):
+            assert b._mem.next_available_page == i
+
 
 def test_batch_insert(b):
     def generate(from_, to):

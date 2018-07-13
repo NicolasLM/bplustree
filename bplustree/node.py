@@ -41,6 +41,10 @@ class Node(metaclass=abc.ABCMeta):
         if self.next_page == 0:
             self.next_page = None
 
+        if self._entry_class is None:
+            # For Nodes that cannot hold Entries
+            return
+
         try:
             # For Nodes that can hold multiple sized Entries
             entry_length = self._entry_class(self._tree_conf).length
@@ -308,6 +312,11 @@ class OverflowNode(Node):
         self._entry_class = OpaqueData
         super().__init__(tree_conf, data, page, next_page=next_page)
 
+    def __repr__(self):
+        return '<{}: page={} next_page={}>'.format(
+            self.__class__.__name__, self.page, self.next_page
+        )
+
 
 class FreelistNode(Node):
     """Node that is a marker for a deallocated page."""
@@ -317,4 +326,9 @@ class FreelistNode(Node):
         self._node_type_int = 6
         self.max_children = 0
         self.min_children = 0
-        super().__init__(tree_conf, None, page, next_page=next_page)
+        super().__init__(tree_conf, data, page, next_page=next_page)
+
+    def __repr__(self):
+        return '<{}: page={} next_page={}>'.format(
+            self.__class__.__name__, self.page, self.next_page
+        )
