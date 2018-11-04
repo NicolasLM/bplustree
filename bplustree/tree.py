@@ -303,14 +303,14 @@ class BPlusTree:
                     continue
 
                 if slice_.stop is not None and entry.key >= slice_.stop:
-                    raise StopIteration()
+                    return
 
                 yield entry
 
             if node.next_page:
                 node = self._mem.get_node(node.next_page)
             else:
-                raise StopIteration()
+                return
 
     def _search_in_tree(self, key, node) -> 'Node':
         if isinstance(node, (LonelyRootNode, LeafNode)):
