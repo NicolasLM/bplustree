@@ -81,7 +81,7 @@ slice:
 
 .. code:: python
 
-    >>> for key, value in tree.items(slice(start=0, stop=10):
+    >>> for key, value in tree.items(slice(start=0, stop=10)):
     ...     print(key, value)
     ...
     1 b'foo'
